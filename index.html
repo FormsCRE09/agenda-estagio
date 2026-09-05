@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Agenda - E/9ªCRE/GRH</title>
+<title>Agendamento de Atendimento - E/9ªCRE/GRH</title>
 <style>
 :root{--text:#1d2a38;--muted:#6f7d8b;--primary:#0f4c81;--primary2:#1767aa;--accent:#f0ad2c;--success:#1d8f5a;--danger:#a23a2f;--line:#d8e1ea;--shadow:0 10px 30px rgba(27,54,82,.12)}
 *{box-sizing:border-box}
@@ -26,6 +26,37 @@ button{min-height:44px;border-radius:10px;padding:0 16px;font-weight:800;cursor:
 .summary{background:#f8fbfe;border:1px solid #d8e4ef;border-radius:12px;padding:14px;line-height:1.5;margin-top:14px} .hidden{display:none!important} .step-disabled{opacity:.45;pointer-events:none}
 .modal-backdrop{position:fixed;inset:0;z-index:9999;background:rgba(11,31,48,.58);display:flex;align-items:center;justify-content:center;padding:20px} .modal-card{width:min(520px,100%);background:#fff;border-radius:20px;box-shadow:0 24px 70px rgba(14,45,73,.28);overflow:hidden} .modal-head{padding:20px 22px 14px;border-bottom:1px solid var(--line)} .modal-body{padding:18px 22px} .modal-actions{display:flex;justify-content:flex-end;gap:10px;padding:0 22px 20px}
 @media(max-width:680px){.fields{grid-template-columns:1fr}.slots{grid-template-columns:repeat(2,1fr)}.topbar-logo{height:44px;max-width:120px}}
+
+.success-icon{
+  width:46px;
+  height:46px;
+  border-radius:14px;
+  background:#e9f6ef;
+  color:#176d46;
+  display:grid;
+  place-items:center;
+  font-size:1.3rem;
+  font-weight:900;
+  border:1px solid #b9dcc8;
+  flex:0 0 auto;
+}
+.modal-head-flex{
+  display:flex;
+  align-items:flex-start;
+  gap:14px;
+}
+.modal-head h3{
+  margin:0;
+  color:var(--primary);
+  font-size:1.1rem;
+}
+.modal-head p{
+  margin:5px 0 0;
+  color:var(--muted);
+  font-size:.86rem;
+  line-height:1.4;
+}
+
 </style>
 </head>
 <body>
@@ -37,6 +68,27 @@ button{min-height:44px;border-radius:10px;padding:0 16px;font-weight:800;cursor:
 <section class="card step-disabled" id="timeCard"><div class="section-title"><h2>4. Escolha o horário</h2><span>Somente os horários disponíveis serão apresentados</span></div><div class="content"><div id="timeStatus" class="notice info">Escolha uma data.</div><div id="slots" class="slots"></div><div id="summary" class="summary hidden"></div><div class="actions"><button class="primary" id="confirmar" disabled>Confirmar agendamento</button></div></div></section>
 <section class="card"><div class="section-title"><h2>Já possui agendamento?</h2><span>Receba um código por e-mail para reagendar ou cancelar</span></div><div class="content"><div class="fields"><div class="field"><label>E-mail usado no agendamento</label><input id="manageEmail" type="email"></div><div class="field"><label>Código de verificação</label><input id="manageCode" maxlength="6" disabled></div></div><div class="actions"><button class="secondary" id="sendManageCode">Enviar código</button><button class="primary" id="validateManageCode" disabled>Validar código</button></div><div id="manageStatus" class="notice info">O código será enviado para o e-mail informado no agendamento.</div><div id="managePanel" class="hidden"><div id="manageSummary" class="summary"></div><div class="actions"><button class="secondary" id="btnReschedule">Reagendar</button><button class="danger" id="btnCancel">Cancelar agendamento</button></div><div id="rescheduleArea" class="hidden" style="margin-top:18px"><div id="rescheduleCalendar" class="calendar-grid"></div><div id="rescheduleTimeStatus" class="notice info">Escolha uma data.</div><div id="rescheduleSlots" class="slots"></div><div class="actions"><button class="primary" id="confirmReschedule" disabled>Confirmar reagendamento</button></div></div></div></div></section>
 </main>
+
+<div id="successModal" class="modal-backdrop hidden">
+  <div class="modal-card">
+    <div class="modal-head">
+      <div class="modal-head-flex">
+        <div class="success-icon">✓</div>
+        <div>
+          <h3>Agendamento confirmado</h3>
+          <p>Seu atendimento foi registrado com sucesso.</p>
+        </div>
+      </div>
+    </div>
+    <div class="modal-body">
+      <div id="successModalSummary" class="summary"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="primary" id="successModalClose">Fechar</button>
+    </div>
+  </div>
+</div>
+
 <div id="cancelModal" class="modal-backdrop hidden"><div class="modal-card"><div class="modal-head"><h3>Confirmar cancelamento</h3><p>Esta ação irá liberar novamente os horários reservados.</p></div><div class="modal-body"><div id="cancelModalSummary" class="summary"></div></div><div class="modal-actions"><button class="secondary" id="cancelModalBack">Voltar</button><button class="danger" id="cancelModalConfirm">Confirmar cancelamento</button></div></div></div>
 <script>
 const API_URL="https://script.google.com/macros/s/AKfycbyEJsYcKCi8ZoHqlEyYM1NhDgW-hsVK48dr9Pz8Rqk-Ca-cFn9B9KnKlt2BjsQNp29t/exec";
@@ -54,7 +106,17 @@ async function selecionarServico(s){if(!pessoaValidada)return;servicoSelecionado
 function renderCalendar(datas,container,title,cb){const o=[...datas].sort((a,b)=>a.split("/").reverse().join("-").localeCompare(b.split("/").reverse().join("-")));const [d,m,y]=o[0].split("/").map(Number);title&&(title.textContent=new Date(y,m-1,1).toLocaleDateString("pt-BR",{month:"long",year:"numeric"}));const set=new Set(o.filter(x=>x.endsWith(String(m).padStart(2,"0")+"/"+y)));container.innerHTML="";["DOM","SEG","TER","QUA","QUI","SEX","SÁB"].forEach(w=>{const e=document.createElement("div");e.className="weekday";e.textContent=w;container.appendChild(e)});for(let i=0;i<new Date(y,m-1,1).getDay();i++)container.appendChild(document.createElement("div"));for(let n=1;n<=new Date(y,m,0).getDate();n++){const k=String(n).padStart(2,"0")+"/"+String(m).padStart(2,"0")+"/"+y;const b=document.createElement("button");b.className="day";b.textContent=n;if(set.has(k)){b.classList.add("available");b.onclick=()=>{container.querySelectorAll(".day").forEach(x=>x.classList.remove("selected"));b.classList.add("selected");cb(k)}}else b.disabled=true;container.appendChild(b)}}
 async function selecionarData(d){dataSelecionada=d;timeCard.classList.remove("step-disabled");setNotice(timeStatus,"info","Consultando horários...");try{const r=await api("listarHorariosDisponiveis",{servico:servicoSelecionado,data:d});if(!r.ok)throw new Error(r.erro);renderSlots(r.horarios,slots,h=>{horaSelecionada=h;summary.classList.remove("hidden");summary.innerHTML=`<strong>Resumo:</strong><br>${SERVICOS[servicoSelecionado]}<br>${d} • Horário: ${h}`;confirmar.disabled=false})}catch(e){setNotice(timeStatus,"error",e.message)}}
 function renderSlots(hs,container,cb){container.innerHTML="";if(!hs.length)return;setNotice(timeStatus,"info","Selecione um dos horários disponíveis.");hs.forEach(h=>{const b=document.createElement("button");b.className="slot";b.textContent=h;b.onclick=()=>{container.querySelectorAll(".slot").forEach(x=>x.classList.remove("selected"));b.classList.add("selected");cb(h)};container.appendChild(b)})}
-confirmar.onclick=async()=>{confirmar.disabled=true;try{const payload={nome:nome.value.trim(),email:email.value.trim(),telefone:telefone.value.trim(),servico:servicoSelecionado,data:dataSelecionada,hora:horaSelecionada};const r=await api("confirmarAgendamento",{payload});if(!r.ok)throw new Error(r.erro);alert("Agendamento confirmado com sucesso.")}catch(e){alert(e.message)}finally{confirmar.disabled=false}}
+confirmar.onclick=async()=>{confirmar.disabled=true;try{const payload={nome:nome.value.trim(),email:email.value.trim(),telefone:telefone.value.trim(),servico:servicoSelecionado,data:dataSelecionada,hora:horaSelecionada};const r=await api("confirmarAgendamento",{payload});if(!r.ok)throw new Error(r.erro);successModalSummary.innerHTML=
+      "<strong>"+esc(SERVICOS[payload.servico]||payload.servico)+"</strong><br>"+
+      esc(payload.data)+" • Horário: "+esc(payload.hora)+
+      "<br><span style='color:var(--muted);font-size:.84rem'>"+
+      (
+        r.emailEnviado===false
+          ? "Agendamento confirmado. O e-mail de confirmação não pôde ser enviado."
+          : "Uma confirmação foi enviada para "+esc(payload.email)+"."
+      )+
+      "</span>";
+    successModal.classList.remove("hidden")}catch(e){alert(e.message)}finally{confirmar.disabled=false}}
 sendManageCode.onclick=async()=>{if(!emailOk(manageEmail.value))return setNotice(manageStatus,"error","Informe um e-mail válido.");try{const r=await api("solicitarCodigoGerenciamento",{email:manageEmail.value.trim()});if(!r.ok)throw new Error(r.erro);manageCode.disabled=false;validateManageCode.disabled=false;setNotice(manageStatus,"ok","Código enviado. Verifique seu e-mail.")}catch(e){setNotice(manageStatus,"error",e.message)}}
 validateManageCode.onclick=async()=>{try{const r=await api("validarCodigoGerenciamento",{email:manageEmail.value.trim(),codigo:manageCode.value.trim()});if(!r.ok)throw new Error(r.erro);manageToken=r.token;manageAppointment=r.agendamento;managePanel.classList.remove("hidden");manageSummary.innerHTML=`<strong>Agendamento atual</strong><br>${SERVICOS[manageAppointment.servico]||manageAppointment.servico}<br>${manageAppointment.data} • ${manageAppointment.hora}<br>Código: ${manageAppointment.codigo}`;setNotice(manageStatus,"ok","Acesso ao agendamento liberado.")}catch(e){setNotice(manageStatus,"error",e.message)}}
 btnCancel.onclick=()=>{cancelModalSummary.innerHTML=`<strong>${SERVICOS[manageAppointment.servico]||manageAppointment.servico}</strong><br>${manageAppointment.data} • ${manageAppointment.hora}`;cancelModal.classList.remove("hidden")}
@@ -63,6 +125,15 @@ cancelModalConfirm.onclick=async()=>{try{const r=await api("cancelarAgendamento"
 btnReschedule.onclick=async()=>{try{const r=await api("listarDatasReagendamento",{token:manageToken});if(!r.ok)throw new Error(r.erro);rescheduleArea.classList.remove("hidden");renderCalendar(r.datas,rescheduleCalendar,null,d=>carregarHorariosReagendamento(d))}catch(e){setNotice(manageStatus,"error",e.message)}}
 async function carregarHorariosReagendamento(d){rescheduleDate=d;try{const r=await api("listarHorariosReagendamento",{token:manageToken,data:d});if(!r.ok)throw new Error(r.erro);renderSlots(r.horarios,rescheduleSlots,h=>{rescheduleTime=h;confirmReschedule.disabled=false})}catch(e){setNotice(rescheduleTimeStatus,"error",e.message)}}
 confirmReschedule.onclick=async()=>{try{const r=await api("reagendarAgendamento",{token:manageToken,data:rescheduleDate,hora:rescheduleTime});if(!r.ok)throw new Error(r.erro);manageAppointment=r.agendamento;rescheduleArea.classList.add("hidden");setNotice(manageStatus,"ok","Agendamento reagendado com sucesso.")}catch(e){setNotice(manageStatus,"error",e.message)}}
+
+successModalClose.onclick=()=>successModal.classList.add("hidden");
+successModal.onclick=(e)=>{if(e.target===successModal)successModal.classList.add("hidden")};
+document.addEventListener("keydown",(e)=>{
+  if(e.key==="Escape"&&!successModal.classList.contains("hidden")){
+    successModal.classList.add("hidden");
+  }
+});
+
 carregarServicos();
 </script>
 </body></html>
