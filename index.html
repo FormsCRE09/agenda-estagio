@@ -159,6 +159,69 @@ const API_URL="https://script.google.com/macros/s/AKfycbyEJsYcKCi8ZoHqlEyYM1NhDg
 const SERVICOS={};
 let pessoaValidada=false,servicoSelecionado="",dataSelecionada="",horaSelecionada="",manageToken="",manageAppointment=null,rescheduleDate="",rescheduleTime="";
 
+
+/* V12.25 — proteção visual contra datas/horários passados.
+   O servidor continua sendo a autoridade final. */
+function dataBRParaLocal(d){
+  const p=String(d||"")
+    .split("/")
+    .map(Number);
+
+  if(p.length!==3){
+    return null;
+  }
+
+  return new Date(
+    p[2],
+    p[1]-1,
+    p[0],
+    0,0,0,0
+  );
+}
+
+function dataPassadaCliente(d){
+  const alvo=
+    dataBRParaLocal(d);
+
+  if(!alvo){
+    return true;
+  }
+
+  const hoje=
+    new Date();
+
+  hoje.setHours(0,0,0,0);
+
+  return alvo < hoje;
+}
+
+function horarioPassadoCliente(d,h){
+  const alvo=
+    dataBRParaLocal(d);
+
+  if(!alvo){
+    return true;
+  }
+
+  const hm=
+    String(h||"")
+      .split(":")
+      .map(Number);
+
+  if(hm.length!==2){
+    return true;
+  }
+
+  alvo.setHours(
+    hm[0],
+    hm[1],
+    0,
+    0
+  );
+
+  return alvo <= new Date();
+}
+
 async function api(acao,dados={}){const r=await fetch(API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},redirect:"follow",body:JSON.stringify({acao,...dados})});const t=await r.text();return JSON.parse(t)}
 function emailOk(v){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim())}
 function tel(v){return String(v||"").replace(/\D/g,"")}
@@ -412,10 +475,232 @@ manageIdentifier.addEventListener(
 async function carregarServicos(){try{const r=await api("listarServicos");if(!r.ok)throw new Error(r.erro);serviceGrid.innerHTML="";r.servicos.forEach(x=>{SERVICOS[x.codigo]=x.nome;const l=document.createElement("label");l.className="type-option";l.innerHTML=`<input type="radio" name="servico" value="${x.codigo}"><span>${esc(x.nome)}<small>Selecione para consultar disponibilidade</small></span>`;serviceGrid.appendChild(l)});equalizarCaixasServicos();document.querySelectorAll('input[name="servico"]').forEach(el=>el.onchange=()=>selecionarServico(el.value))}catch(e){setNotice(identityStatus,"error","Erro ao carregar serviços: "+e.message)}}
 verificar.onclick=async()=>{if(nome.value.trim().split(/\s+/).length<2)return setNotice(identityStatus,"error","Informe o nome completo.");if(!emailOk(email.value))return setNotice(identityStatus,"error","Informe um e-mail válido.");if(tel(telefone.value).length<10)return setNotice(identityStatus,"error","Informe um telefone com DDD.");verificar.disabled=true;try{const r=await api("verificarAgendamentoAberto",{nome:nome.value.trim().toUpperCase(),email:email.value.trim().toLowerCase(),telefone:telefone.value.trim()});if(!r.ok)throw new Error(r.erro);if(r.agendamentoAberto){pessoaValidada=false;serviceCard.classList.add("step-disabled");return setNotice(identityStatus,"warn",`<strong>Já existe um agendamento futuro em aberto.</strong><br>${r.agendamento.data} às ${r.agendamento.hora} • ${SERVICOS[r.agendamento.servico]||r.agendamento.servico}`)}pessoaValidada=true;serviceCard.classList.remove("step-disabled");setNotice(identityStatus,"ok","Dados verificados. Agora selecione o tipo de serviço.")}catch(e){setNotice(identityStatus,"error",e.message)}finally{verificar.disabled=false}}
 async function selecionarServico(s){if(!pessoaValidada)return;servicoSelecionado=s;dateCard.classList.remove("step-disabled");calendarWrap.classList.add("hidden");setNotice(calendarStatus,"info","Consultando datas...");try{const r=await api("listarDatasDisponiveis",{servico:s});if(!r.ok)throw new Error(r.erro);if(!r.datas.length)return setNotice(calendarStatus,"warn","Não há datas disponíveis para este serviço.");renderCalendar(r.datas,calendar,monthTitle,d=>selecionarData(d));calendarWrap.classList.remove("hidden");calendarStatus.classList.add("hidden")}catch(e){setNotice(calendarStatus,"error",e.message)}}
-function renderCalendar(datas,container,title,cb){const o=[...datas].sort((a,b)=>a.split("/").reverse().join("-").localeCompare(b.split("/").reverse().join("-")));const [d,m,y]=o[0].split("/").map(Number);title&&(title.textContent=new Date(y,m-1,1).toLocaleDateString("pt-BR",{month:"long",year:"numeric"}));const set=new Set(o.filter(x=>x.endsWith(String(m).padStart(2,"0")+"/"+y)));container.innerHTML="";["DOM","SEG","TER","QUA","QUI","SEX","SÁB"].forEach(w=>{const e=document.createElement("div");e.className="weekday";e.textContent=w;container.appendChild(e)});for(let i=0;i<new Date(y,m-1,1).getDay();i++)container.appendChild(document.createElement("div"));for(let n=1;n<=new Date(y,m,0).getDate();n++){const k=String(n).padStart(2,"0")+"/"+String(m).padStart(2,"0")+"/"+y;const b=document.createElement("button");b.className="day";b.textContent=n;if(set.has(k)){b.classList.add("available");b.onclick=()=>{container.querySelectorAll(".day").forEach(x=>x.classList.remove("selected"));b.classList.add("selected");cb(k)}}else b.disabled=true;container.appendChild(b)}}
+function renderCalendar(datas,container,title,cb){
+  const futuras=
+    [...datas]
+      .filter(d=>
+        !dataPassadaCliente(d)
+      );
+
+  if(!futuras.length){
+    container.innerHTML="";
+    if(title){
+      title.textContent="";
+    }
+    return;
+  }
+
+  const o=
+    futuras.sort(
+      (a,b)=>
+        a.split("/").reverse().join("-")
+          .localeCompare(
+            b.split("/").reverse().join("-")
+          )
+    );
+
+  const [d,m,y]=
+    o[0]
+      .split("/")
+      .map(Number);
+
+  if(title){
+    title.textContent=
+      new Date(
+        y,m-1,1
+      )
+      .toLocaleDateString(
+        "pt-BR",
+        {
+          month:"long",
+          year:"numeric"
+        }
+      );
+  }
+
+  const set=
+    new Set(
+      o.filter(
+        x=>
+          x.endsWith(
+            String(m).padStart(2,"0")+
+            "/"+
+            y
+          )
+      )
+    );
+
+  container.innerHTML="";
+
+  [
+    "DOM","SEG","TER",
+    "QUA","QUI","SEX","SÁB"
+  ]
+  .forEach(w=>{
+    const e=
+      document.createElement("div");
+
+    e.className="weekday";
+    e.textContent=w;
+    container.appendChild(e);
+  });
+
+  for(
+    let i=0;
+    i<
+      new Date(
+        y,m-1,1
+      ).getDay();
+    i++
+  ){
+    container.appendChild(
+      document.createElement("div")
+    );
+  }
+
+  for(
+    let n=1;
+    n<=new Date(y,m,0).getDate();
+    n++
+  ){
+    const k=
+      String(n).padStart(2,"0")+
+      "/"+
+      String(m).padStart(2,"0")+
+      "/"+
+      y;
+
+    const b=
+      document.createElement("button");
+
+    b.className="day";
+    b.textContent=n;
+
+    if(
+      set.has(k) &&
+      !dataPassadaCliente(k)
+    ){
+      b.classList.add("available");
+
+      b.onclick=()=>{
+        container
+          .querySelectorAll(".day")
+          .forEach(
+            x=>x.classList.remove("selected")
+          );
+
+        b.classList.add("selected");
+        cb(k);
+      };
+    }
+    else{
+      b.disabled=true;
+    }
+
+    container.appendChild(b);
+  }
+}
 async function selecionarData(d){dataSelecionada=d;timeCard.classList.remove("step-disabled");setNotice(timeStatus,"info","Consultando horários...");try{const r=await api("listarHorariosDisponiveis",{servico:servicoSelecionado,data:d});if(!r.ok)throw new Error(r.erro);renderSlots(r.horarios,slots,h=>{horaSelecionada=h;summary.classList.remove("hidden");summary.innerHTML=`<strong>Resumo:</strong><br>${SERVICOS[servicoSelecionado]}<br>${d} • Horário: ${h}`;confirmar.disabled=false})}catch(e){setNotice(timeStatus,"error",e.message)}}
-function renderSlots(hs,container,cb){container.innerHTML="";if(!hs.length)return;setNotice(timeStatus,"info","Selecione um dos horários disponíveis.");hs.forEach(h=>{const b=document.createElement("button");b.className="slot";b.textContent=h;b.onclick=()=>{container.querySelectorAll(".slot").forEach(x=>x.classList.remove("selected"));b.classList.add("selected");cb(h)};container.appendChild(b)})}
-confirmar.onclick=async()=>{confirmar.disabled=true;try{const payload={nome:nome.value.trim().toUpperCase(),email:email.value.trim().toLowerCase(),telefone:telefone.value.trim(),servico:servicoSelecionado,data:dataSelecionada,hora:horaSelecionada};const r=await api("confirmarAgendamento",{payload});if(!r.ok)throw new Error(r.erro);successModalSummary.innerHTML=
+function renderSlots(hs,container,cb){
+  container.innerHTML="";
+
+  const dataReferencia=
+    container===rescheduleSlots
+      ?rescheduleDate
+      :dataSelecionada;
+
+  const futuros=
+    (hs||[])
+      .filter(h=>
+        !horarioPassadoCliente(
+          dataReferencia,
+          h
+        )
+      );
+
+  if(!futuros.length){
+    if(
+      container===slots
+    ){
+      setNotice(
+        timeStatus,
+        "warn",
+        "Não há mais horários futuros disponíveis nesta data."
+      );
+    }
+    return;
+  }
+
+  if(container===slots){
+    setNotice(
+      timeStatus,
+      "info",
+      "Selecione um dos horários disponíveis."
+    );
+  }
+
+  futuros.forEach(h=>{
+    const b=
+      document.createElement("button");
+
+    b.className="slot";
+    b.textContent=h;
+
+    b.onclick=()=>{
+      /*
+        Revalida no momento do clique, pois a página pode
+        permanecer aberta até o horário vencer.
+      */
+      if(
+        horarioPassadoCliente(
+          dataReferencia,
+          h
+        )
+      ){
+        b.disabled=true;
+        return;
+      }
+
+      container
+        .querySelectorAll(".slot")
+        .forEach(
+          x=>x.classList.remove("selected")
+        );
+
+      b.classList.add("selected");
+      cb(h);
+    };
+
+    container.appendChild(b);
+  });
+}
+confirmar.onclick=async()=>{
+  confirmar.disabled=true;
+
+  try{
+    if(
+      !dataSelecionada ||
+      !horaSelecionada ||
+      horarioPassadoCliente(
+        dataSelecionada,
+        horaSelecionada
+      )
+    ){
+      throw new Error(
+        "Este horário já passou. Escolha outro horário disponível."
+      );
+    }
+
+    const payload={
+      nome:nome.value.trim().toUpperCase(),
+      email:email.value.trim().toLowerCase(),
+      telefone:telefone.value.trim(),
+      servico:servicoSelecionado,
+      data:dataSelecionada,
+      hora:horaSelecionada
+    };
+
+    const r=await api("confirmarAgendamento",{payload});if(!r.ok)throw new Error(r.erro);successModalSummary.innerHTML=
       "<strong>"+esc(SERVICOS[payload.servico]||payload.servico)+"</strong><br>"+
       esc(payload.data)+" • Horário: "+esc(payload.hora)+
       "<br><span style='color:var(--muted);font-size:.84rem'>"+
@@ -425,7 +710,7 @@ confirmar.onclick=async()=>{confirmar.disabled=true;try{const payload={nome:nome
           : "Uma confirmação foi enviada para "+esc(payload.email)+"."
       )+
       "</span>";
-    successModal.classList.remove("hidden")}catch(e){alert(e.message)}finally{confirmar.disabled=false}}
+    successModal.classList.remove("hidden")}catch(e){setNotice(timeStatus,"error",e.message)}finally{confirmar.disabled=false}}
 sendManageCode.onclick=async()=>{
   if(
     !identificadorGerenciamentoValido()
@@ -565,7 +850,22 @@ cancelModalBack.onclick=()=>cancelModal.classList.add("hidden");
 cancelModalConfirm.onclick=async()=>{try{const r=await api("cancelarAgendamento",{token:manageToken});if(!r.ok)throw new Error(r.erro);cancelModal.classList.add("hidden");managePanel.classList.add("hidden");setNotice(manageStatus,"ok","Agendamento cancelado com sucesso.");manageToken="";manageAppointment=null}catch(e){setNotice(manageStatus,"error",e.message)}}
 btnReschedule.onclick=async()=>{try{const r=await api("listarDatasReagendamento",{token:manageToken});if(!r.ok)throw new Error(r.erro);rescheduleArea.classList.remove("hidden");renderCalendar(r.datas,rescheduleCalendar,null,d=>carregarHorariosReagendamento(d))}catch(e){setNotice(manageStatus,"error",e.message)}}
 async function carregarHorariosReagendamento(d){rescheduleDate=d;try{const r=await api("listarHorariosReagendamento",{token:manageToken,data:d});if(!r.ok)throw new Error(r.erro);renderSlots(r.horarios,rescheduleSlots,h=>{rescheduleTime=h;confirmReschedule.disabled=false})}catch(e){setNotice(rescheduleTimeStatus,"error",e.message)}}
-confirmReschedule.onclick=async()=>{try{const r=await api("reagendarAgendamento",{token:manageToken,data:rescheduleDate,hora:rescheduleTime});if(!r.ok)throw new Error(r.erro);manageAppointment=r.agendamento;rescheduleArea.classList.add("hidden");setNotice(manageStatus,"ok","Agendamento reagendado com sucesso.")}catch(e){setNotice(manageStatus,"error",e.message)}}
+confirmReschedule.onclick=async()=>{
+  try{
+    if(
+      !rescheduleDate ||
+      !rescheduleTime ||
+      horarioPassadoCliente(
+        rescheduleDate,
+        rescheduleTime
+      )
+    ){
+      throw new Error(
+        "Este horário já passou. Escolha outro para reagendar."
+      );
+    }
+
+    const r=await api("reagendarAgendamento",{token:manageToken,data:rescheduleDate,hora:rescheduleTime});if(!r.ok)throw new Error(r.erro);manageAppointment=r.agendamento;rescheduleArea.classList.add("hidden");setNotice(manageStatus,"ok","Agendamento reagendado com sucesso.")}catch(e){setNotice(manageStatus,"error",e.message)}}
 
 successModalClose.onclick=()=>successModal.classList.add("hidden");
 successModal.onclick=(e)=>{if(e.target===successModal)successModal.classList.add("hidden")};
