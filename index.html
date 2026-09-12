@@ -26,6 +26,7 @@ button:disabled{opacity:.55;cursor:not-allowed;transform:none;box-shadow:none}
 button.primary{background:linear-gradient(180deg,var(--primary2),var(--primary));color:#fff}
 button.secondary{background:#edf2f7;color:#3e5062;border:1px solid var(--line)}
 button.danger{background:#fdecec;color:#9a3535;border:1px solid #d9a4a4}
+button.presence{background:linear-gradient(180deg,#2aa86b,var(--success));color:#fff;border:1px solid #167446}
 .notice{padding:12px 14px;border-radius:10px;font-size:.86rem;line-height:1.45;margin-top:14px} .notice.info{background:#edf5fb;color:#315b7c;border-left:4px solid var(--primary2)} .notice.ok{background:#e9f6ef;color:#176d46;border-left:4px solid var(--success)} .notice.warn{background:#fff8e6;color:#70551c;border-left:4px solid var(--accent)} .notice.error{background:#fdecec;color:#9a3535;border-left:4px solid var(--danger)}
 .type-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px} .type-option{position:relative} .type-option input{position:absolute;opacity:0} .type-option span{min-height:70px;display:flex;flex-direction:column;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:12px;cursor:pointer;font-weight:700;padding:9px} .type-option input:checked+span{background:#eaf3fb;border-color:var(--primary2);color:var(--primary)} .type-option small{font-size:.72rem;color:var(--muted);margin-top:4px}
 .calendar-head{display:flex;justify-content:space-between;margin-bottom:12px} .calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:7px} .weekday{text-align:center;font-size:.7rem;font-weight:800;color:var(--muted)} .day{border:1px solid var(--line);border-radius:10px;min-height:48px;background:#f6f8fa;color:#a4adb6;font-weight:700} .day.available{background:#fff;color:var(--primary);cursor:pointer;border-color:#aac1d7} .day.selected{background:#eaf3fb;border-color:var(--primary2)}
@@ -531,6 +532,48 @@ verificar.onclick=async()=>{aplicarMascaraTelefonePrincipal();const telefoneNorm
   dateCard.classList.add("step-disabled");
   timeCard.classList.add("step-disabled");
 
+  if(r.presencaHoje){
+    if(r.presencaRegistrada){
+      return setNotice(
+        identityStatus,
+        "ok",
+        "<strong>Sua presença para o atendimento de hoje já está registrada.</strong><br>Você permanece na fila de espera da equipe. Aguarde ser chamado."
+      );
+    }
+
+    if(r.presencaPermitida){
+      return setNotice(
+        identityStatus,
+        "warn",
+        "<strong>Existe um agendamento para hoje associado aos dados informados.</strong><br>"+
+        "Se você já chegou ao local de atendimento, registre sua presença para entrar na fila de espera.<br><br>"+
+        "<button id='btnRegistrarPresencaHoje' type='button' class='presence' onclick='registrarPresencaPublicaAtual()'>REGISTRAR PRESENÇA</button> "+
+        "<button type='button' class='secondary' onclick=\"document.getElementById('manageCard').scrollIntoView({behavior:'smooth',block:'start'})\">Gerenciar agendamento</button>"
+      );
+    }
+
+    if(r.situacaoPresenca==="ANTES_JANELA"){
+      return setNotice(
+        identityStatus,
+        "info",
+        "<strong>Existe um agendamento para hoje associado aos dados informados.</strong><br>"+
+        "O registro de presença será liberado a partir de <strong>1 hora antes do início do atendimento</strong>.<br><br>"+
+        "<button type='button' class='secondary' onclick=\"document.getElementById('manageCard').scrollIntoView({behavior:'smooth',block:'start'})\">Gerenciar agendamento</button>"
+      );
+    }
+
+    if(r.situacaoPresenca==="ATRASO_EXCEDIDO"){
+      return setNotice(
+        identityStatus,
+        "warn",
+        "<strong>O período para registro de presença deste atendimento já foi encerrado.</strong><br>"+
+        "A tolerância de chegada para este serviço era de <strong>"+(r.toleranciaPresencaMin||0)+" minuto(s)</strong> após o horário marcado. "+
+        "Reagende seu atendimento e, caso esteja no local, informe a situação a um dos atendentes.<br><br>"+
+        "<button type='button' class='primary' onclick=\"document.getElementById('manageCard').scrollIntoView({behavior:'smooth',block:'start'})\">REAGENDAR</button>"
+      );
+    }
+  }
+
   return setNotice(
     identityStatus,
     "warn",
@@ -541,6 +584,26 @@ verificar.onclick=async()=>{aplicarMascaraTelefonePrincipal();const telefoneNorm
     "<button type='button' class='secondary' onclick=\"document.getElementById('manageCard').scrollIntoView({behavior:'smooth',block:'start'})\">Gerenciar agendamento</button>"
   );
 }pessoaValidada=true;serviceCard.classList.remove("step-disabled");setNotice(identityStatus,"ok","Dados verificados. Agora selecione o tipo de serviço.")}catch(e){setNotice(identityStatus,"error",e.message)}finally{verificar.disabled=false}}
+
+async function registrarPresencaPublicaAtual(){
+  aplicarMascaraTelefonePrincipal();
+  const btn=document.getElementById("btnRegistrarPresencaHoje");
+  if(btn){btn.disabled=true;btn.textContent="Registrando...";}
+  try{
+    const r=await api("registrarPresencaPublica",{
+      nome:nome.value.trim().toUpperCase(),
+      email:email.value.trim().toLowerCase(),
+      telefone:normalizarTelefoneBR(telefone.value)
+    });
+    if(!r.ok)throw new Error(r.erro);
+    setNotice(identityStatus,"ok","<strong>Presença registrada.</strong><br>Você já está na fila de espera da equipe. Aguarde ser chamado para o atendimento.");
+  }catch(e){
+    setNotice(identityStatus,"error",e.message);
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent="REGISTRAR PRESENÇA";}
+  }
+}
+
 async function selecionarServico(s){if(!pessoaValidada)return;servicoSelecionado=s;dateCard.classList.remove("step-disabled");calendarWrap.classList.add("hidden");setNotice(calendarStatus,"info","Consultando datas...");try{const r=await api("listarDatasDisponiveis",{servico:s});if(!r.ok)throw new Error(r.erro);if(!r.datas.length)return setNotice(calendarStatus,"warn","Não há datas disponíveis para este serviço.");renderCalendar(r.datas,calendar,monthTitle,d=>selecionarData(d));calendarWrap.classList.remove("hidden");calendarStatus.classList.add("hidden")}catch(e){setNotice(calendarStatus,"error",e.message)}}
 function renderCalendar(datas,container,title,cb){
   const futuras=
@@ -882,6 +945,14 @@ validateManageCode.onclick=async()=>{
       .classList
       .remove("hidden");
 
+    if(manageAppointment.somenteReagendar){
+      btnCancel.classList.add("hidden");
+      btnCancel.disabled=true;
+    }else{
+      btnCancel.classList.remove("hidden");
+      btnCancel.disabled=false;
+    }
+
     manageSummary.innerHTML=
       "<strong>Agendamento atual</strong><br>"+
       esc(
@@ -900,8 +971,10 @@ validateManageCode.onclick=async()=>{
 
     setNotice(
       manageStatus,
-      "ok",
-      "Acesso ao agendamento liberado."
+      manageAppointment.somenteReagendar ? "warn" : "ok",
+      manageAppointment.somenteReagendar
+        ? "O atraso ultrapassou a tolerância prevista para este atendimento. Utilize a opção de reagendamento e, caso esteja no local, informe a situação a um dos atendentes."
+        : "Acesso ao agendamento liberado."
     );
   }
   catch(e){
