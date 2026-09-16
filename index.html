@@ -142,7 +142,32 @@ button.presence{background:linear-gradient(180deg,#2aa86b,var(--success));color:
 .service-warning a{display:inline-block;margin-bottom:11px;font-weight:800;color:var(--primary);text-decoration:none}
 .service-warning a:hover{text-decoration:underline}
 .service-warning-confirm{display:flex;gap:9px;align-items:flex-start;padding-top:10px;border-top:1px solid rgba(118,91,18,.18);font-weight:700;line-height:1.35}
-.service-warning-confirm input{margin-top:2px;flex:0 0 auto}
+.service-warning-confirm input{
+  appearance:auto;
+  -webkit-appearance:checkbox;
+  width:18px;
+  height:18px;
+  min-height:18px;
+  margin:2px 0 0;
+  padding:0;
+  border:0;
+  border-radius:3px;
+  box-shadow:none;
+  flex:0 0 18px;
+  cursor:pointer;
+}
+.service-warning-confirm input:focus{
+  outline:2px solid rgba(23,103,170,.28);
+  outline-offset:2px;
+  box-shadow:none;
+}
+.service-warning-confirm span{
+  display:block;
+  min-width:0;
+  flex:1 1 auto;
+  line-height:1.45;
+  overflow-wrap:anywhere;
+}
 
 #nome{
   text-transform:uppercase;
