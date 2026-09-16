@@ -12,7 +12,7 @@
 *{box-sizing:border-box}
 html,body{margin:0;min-height:100%;font-family:"Cera Pro","CeraPRO","Cera Pro Regular","Segoe UI",Arial,sans-serif;color:var(--text);background:linear-gradient(160deg,#eaf1f7,#f8fafc 62%,#edf2f7)}
 body{min-height:100vh}
-.topbar{position:sticky;top:0;z-index:20;background:linear-gradient(90deg,#0b365d 0%,#0f4c81 55%,#1767aa 100%);color:#fff;padding:12px 26px;display:flex;align-items:center;justify-content:space-between;gap:20px;box-shadow:0 5px 18px rgba(14,62,103,.25)}
+.topbar{position:sticky;top:0;z-index:20;background:linear-gradient(90deg,#0b365d 0%,#0f4c81 55%,#1767aa 100%);color:#fff;padding:18px 26px;min-height:126px;display:flex;align-items:center;justify-content:space-between;gap:20px;box-shadow:0 5px 18px rgba(14,62,103,.25)}
 .brand h1{margin:0;font-size:clamp(1.15rem,1.7vw,1.55rem);line-height:1.12} .brand p{margin:5px 0 0;font-size:clamp(.78rem,.95vw,.94rem);opacity:.9}
 .version{display:inline-block;margin-left:9px;padding-left:10px;border-left:1px solid rgba(255,255,255,.38);font-size:.7rem;font-weight:800;letter-spacing:.04em;opacity:.78}
 .top-right{display:flex;align-items:center;gap:22px} .clock{text-align:right;min-width:155px}
@@ -24,28 +24,28 @@ body{min-height:100vh}
   display:flex;
   align-items:center;
   gap:12px;
-  max-width:42%;
-  min-width:250px;
+  max-width:48%;
+  min-width:340px;
 }
 .access-copy{
-  min-width:150px;
+  min-width:205px;
   text-align:right;
   color:#fff;
   line-height:1;
 }
 .access-kicker{
   display:block;
-  margin-bottom:5px;
-  font-size:.62rem;
+  margin-bottom:7px;
+  font-size:.78rem;
   font-weight:800;
   letter-spacing:.16em;
   opacity:.72;
 }
 .access-rotator{
   position:relative;
-  height:18px;
+  height:25px;
   overflow:hidden;
-  font-size:.78rem;
+  font-size:1.02rem;
   font-weight:800;
   letter-spacing:.035em;
   white-space:nowrap;
@@ -67,18 +67,18 @@ body{min-height:100vh}
 }
 .access-divider{
   width:1px;
-  height:48px;
+  height:82px;
   flex:0 0 1px;
   background:rgba(255,255,255,.38);
 }
 .access-qr{
-  width:58px;
-  height:58px;
-  flex:0 0 58px;
+  width:106px;
+  height:106px;
+  flex:0 0 106px;
   display:block;
-  padding:4px;
+  padding:6px;
   background:#fff;
-  border-radius:6px;
+  border-radius:8px;
   box-sizing:border-box;
 }
 @media(prefers-reduced-motion:reduce){
@@ -124,7 +124,7 @@ body{min-height:100vh}
 </head>
 <body>
 <header class="topbar">
-  <div class="brand"><h1>Acompanhamento dos Atendimentos</h1><p>E/9ªCRE/GRH • Equipe de Estágio <span class="version">V14.3</span></p></div>
+  <div class="brand"><h1>Acompanhamento dos Atendimentos</h1><p>E/9ªCRE/GRH • Equipe de Estágio <span class="version">V14.4</span></p></div>
   <div class="top-access" aria-label="Acesso à agenda e registro de presença">
     <div class="access-copy">
       <span class="access-kicker">ACESSE</span>
