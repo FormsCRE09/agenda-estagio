@@ -121,11 +121,11 @@ body{min-height:100vh}
 }
 @media(min-width:1500px){.wrap{margin-top:22px}.item{padding:13px 15px 13px 18px}.list{padding:10px}}
 
-/* V14.6 — Painel TV fixo: compactação visual e rolagem interna */
+/* V14.6 — Painel TV: KPIs distribuídos e rolagem dos horários encerrados */
 .top-subtitle{margin-top:5px!important;font-size:clamp(.72rem,.86vw,.88rem)!important;font-weight:500!important;opacity:.94}
 .hero-compact{justify-content:flex-end!important;min-height:0!important;margin-bottom:8px!important;padding:0!important;background:transparent!important;border:0!important;box-shadow:none!important}
 .hero-compact .connection{margin-left:auto}
-.kpis-compact{display:flex!important;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px!important;margin-bottom:10px!important}
+.kpis-compact{display:flex!important;flex-wrap:nowrap;align-items:center;justify-content:space-between;gap:12px!important;width:100%;margin-bottom:10px!important}
 .kpis-compact .kpi{min-height:0!important;padding:8px 12px!important;display:flex!important;flex-direction:row!important;align-items:center!important;justify-content:center!important;gap:5px!important}
 .kpis-compact .kpi span{font-size:clamp(.68rem,.78vw,.8rem)!important;font-weight:800!important;letter-spacing:.02em}
 .kpis-compact .kpi b{font-size:clamp(.88rem,1vw,1.05rem)!important;line-height:1!important}
@@ -134,6 +134,7 @@ body{min-height:100vh}
 .list.auto-list{position:relative;overflow:hidden}
 .list.two-visible{height:238px}
 .list.upcoming-scroll{height:246px}
+.list.pending-scroll{height:102px}
 .auto-list .scroll-track{display:flex;flex-direction:column;gap:8px;will-change:transform;transition:transform .8s ease}
 .upcoming-scroll .item{position:relative;padding-left:52px}
 .upcoming-scroll .ordinal{position:absolute;left:15px;top:50%;transform:translateY(-50%);font-weight:900;font-size:1rem;color:#557086}
@@ -143,11 +144,11 @@ body{overflow:hidden}
 .foot{flex:0 0 auto}
 @media(max-width:1000px){
   body{overflow:auto}.wrap{height:auto;overflow:visible}.layout{overflow:visible}
-  .list.two-visible,.list.upcoming-scroll{height:auto;max-height:310px;overflow:hidden}
+  .list.two-visible,.list.upcoming-scroll,.list.pending-scroll{height:auto;max-height:310px;overflow:hidden}
 }
 @media(max-width:650px){
   .top-subtitle{display:none}
-  .kpis-compact{justify-content:flex-start}
+  .kpis-compact{justify-content:flex-start;flex-wrap:wrap}
   .kpis-compact .kpi{padding:6px 8px!important}
 }
 
@@ -184,7 +185,7 @@ body{overflow:hidden}
     <section class="section"><div class="section-head"><h3>Aguardando atendimento</h3><span class="count" id="countWaiting">0</span></div><div class="list auto-list two-visible" id="waitingList"></div></section>
     <section class="section"><div class="section-head"><h3>Em atendimento</h3><span class="count" id="countProgress">0</span></div><div class="list auto-list two-visible" id="progressList"></div></section>
     <section class="section full"><div class="section-head"><h3>Próximos atendimentos</h3><span class="count" id="countUpcoming">0</span></div><div class="list auto-list upcoming-scroll" id="upcomingList"></div></section>
-    <section class="section full" id="pendingSection"><div class="section-head"><h3>Horários encerrados — em verificação pela equipe</h3><span class="count" id="countPending">0</span></div><div class="list" id="pendingList"></div></section>
+    <section class="section full" id="pendingSection"><div class="section-head"><h3>Horários encerrados — em verificação pela equipe</h3><span class="count" id="countPending">0</span></div><div class="list auto-list pending-scroll" id="pendingList"></div></section>
   </div>
   <div class="foot"><span class="privacy">Por privacidade, são exibidos somente o primeiro nome e a inicial do último sobrenome. CPF, telefone e e-mail não são exibidos neste painel.</span><span id="lastUpdate">Última atualização: --</span></div>
 </main>
@@ -284,41 +285,63 @@ async function refreshLoop(){
 refreshLoop();
 
 let scrollTimers=[];
+const scrollStates={};
+const SCROLL_INTERVAL_MS=6500;
 function limparRolagens(){
   scrollTimers.forEach(t=>clearTimeout(t));
   scrollTimers=[];
 }
-function iniciarRolagemLista(id,limiteVisivel){
+function aplicarPosicaoRolagem(id,limiteVisivel){
   const box=$(id);
-  if(!box) return;
+  if(!box) return null;
   const track=box.querySelector(".scroll-track");
   const cards=track?Array.from(track.querySelectorAll(".item")):[];
-  if(!track || cards.length<=limiteVisivel){if(track) track.style.transform="translateY(0)";return;}
-  let pos=0;
-  const avancar=()=>{
-    const card=cards[pos];
-    const gap=8;
-    const passo=(card?.offsetHeight||0)+gap;
-    pos++;
-    if(pos>cards.length-limiteVisivel){
-      pos=0;
-      track.style.transition="transform .8s ease";
-      track.style.transform="translateY(0)";
-    }else{
-      track.style.transition="transform .8s ease";
-      track.style.transform=`translateY(-${pos*passo}px)`;
-    }
-    const t=setTimeout(avancar,6500);
+  if(!track || cards.length<=limiteVisivel){
+    if(track){track.style.transition="none";track.style.transform="translateY(0)";}
+    scrollStates[id]={pos:0,nextAt:Date.now()+SCROLL_INTERVAL_MS,count:cards.length};
+    return null;
+  }
+  const maxPos=cards.length-limiteVisivel;
+  const now=Date.now();
+  let st=scrollStates[id];
+  if(!st || st.count!==cards.length){st={pos:0,nextAt:now+SCROLL_INTERVAL_MS,count:cards.length};}
+  st.pos=Math.min(st.pos,maxPos);
+  const gap=8;
+  const passo=(cards[0]?.offsetHeight||0)+gap;
+  track.style.transition="none";
+  track.style.transform=st.pos?`translateY(-${st.pos*passo}px)`:"translateY(0)";
+  scrollStates[id]=st;
+  return {box,track,cards,maxPos,passo,st};
+}
+function iniciarRolagemLista(id,limiteVisivel){
+  const info=aplicarPosicaoRolagem(id,limiteVisivel);
+  if(!info) return;
+  const agendar=()=>{
+    const atual=aplicarPosicaoRolagem(id,limiteVisivel);
+    if(!atual) return;
+    const {track,maxPos,passo,st}=atual;
+    const now=Date.now();
+    const delay=Math.max(80,st.nextAt-now);
+    const t=setTimeout(()=>{
+      const vivo=aplicarPosicaoRolagem(id,limiteVisivel);
+      if(!vivo) return;
+      const state=vivo.st;
+      state.pos=state.pos>=vivo.maxPos?0:state.pos+1;
+      state.nextAt=Date.now()+SCROLL_INTERVAL_MS;
+      vivo.track.style.transition="transform .8s ease";
+      vivo.track.style.transform=state.pos?`translateY(-${state.pos*vivo.passo}px)`:"translateY(0)";
+      agendar();
+    },delay);
     scrollTimers.push(t);
   };
-  const t=setTimeout(avancar,6500);
-  scrollTimers.push(t);
+  agendar();
 }
 function scheduleAutoScroll(){
   limparRolagens();
   iniciarRolagemLista("waitingList",2);
   iniciarRolagemLista("progressList",2);
   iniciarRolagemLista("upcomingList",2);
+  iniciarRolagemLista("pendingList",1);
 }
 window.addEventListener("resize",scheduleAutoScroll);
 </script>
