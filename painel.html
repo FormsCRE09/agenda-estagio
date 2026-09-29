@@ -85,10 +85,10 @@ body{min-height:100vh}
   .access-rotator span{animation:none;opacity:0;transform:none}
   .access-rotator span:first-child{opacity:1}
 } .clock strong{display:block;font-size:clamp(1.2rem,2vw,1.85rem);font-variant-numeric:tabular-nums;letter-spacing:.02em} .clock span{display:block;font-size:.78rem;opacity:.82;margin-top:2px}
-.logo{height:50px;width:auto;max-width:160px;object-fit:contain}
+.logo{height:106px;width:auto;max-width:106px;object-fit:contain}
 .wrap{width:min(1680px,calc(100% - 38px));margin:18px auto 26px}
 .hero{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:14px} .hero h2{margin:0;color:var(--primary);font-size:clamp(1.25rem,1.8vw,1.65rem)} .hero p{margin:5px 0 0;color:var(--muted);font-size:clamp(.8rem,1vw,.98rem)}
-.connection{font-size:.78rem;color:var(--muted);text-align:right} .topbar .connection{margin-top:5px;color:rgba(255,255,255,.86);font-size:.68rem;white-space:nowrap} .topbar .connection.bad{color:#ffe0a8} .connection.bad{color:#8a5b18} .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#4f9b77;margin-right:6px} .bad .dot{background:#c9943d}
+.connection{font-size:.78rem;color:var(--muted);text-align:right} .topbar .connection{margin-top:5px;color:rgba(255,255,255,.86);font-size:.68rem;white-space:nowrap;display:flex;align-items:center;justify-content:flex-end;gap:6px} .topbar .connection.bad{color:#ffe0a8} .connection.bad{color:#8a5b18} .connection .dot{display:inline-block!important;width:8px;height:8px;border-radius:50%;background:#4f9b77;margin:0!important;flex:0 0 8px} .bad .dot{background:#c9943d}
 .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px} .kpi{background:rgba(255,255,255,.82);border:1px solid #d5e0e9;border-radius:13px;padding:10px 14px;box-shadow:0 4px 14px rgba(30,62,92,.06)} .kpi b{display:block;font-size:clamp(1.05rem,1.45vw,1.45rem);color:var(--primary)} .kpi span{display:block;margin-top:2px;color:var(--muted);font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:.035em}
 .layout{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start} .section{background:rgba(255,255,255,.9);border:1px solid #d3dee8;border-radius:16px;box-shadow:var(--shadow);overflow:hidden} .section.full{grid-column:1/-1} .section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 16px;border-bottom:1px solid var(--line)} .section-head h3{margin:0;color:var(--primary);font-size:clamp(.92rem,1.15vw,1.08rem);letter-spacing:.01em} .count{min-width:30px;height:26px;padding:0 9px;border-radius:999px;background:#edf3f8;display:grid;place-items:center;color:#45637d;font-weight:800;font-size:.78rem}
 .list{padding:8px} .empty{padding:22px 16px;color:#8895a2;text-align:center;font-size:.88rem}
@@ -97,8 +97,8 @@ body{min-height:100vh}
 .meta{display:flex;flex-wrap:wrap;gap:6px 13px;margin-top:7px;color:#506273;font-size:clamp(.76rem,.9vw,.88rem)} .meta strong{color:#2d4357} .service{margin-top:6px;font-size:clamp(.78rem,.92vw,.9rem);color:#30495f;font-weight:700;line-height:1.25}
 .call-note{margin-top:8px;padding-top:8px;border-top:1px solid rgba(90,120,145,.16);font-size:clamp(.78rem,.92vw,.9rem);font-weight:800;color:#245a83}
 .foot{display:flex;justify-content:space-between;gap:16px;margin-top:12px;color:#758392;font-size:.73rem} .privacy{max-width:72%}
-.alert{display:none;margin-bottom:12px;padding:10px 13px;border-radius:11px;background:#fff6e8;border:1px solid #ead4ae;color:#78561d;font-size:.82rem} .alert.show{display:block}
-@media(max-width:1000px){.layout{grid-template-columns:1fr}.section.full{grid-column:auto}.kpis{grid-template-columns:repeat(3,1fr)}.logo{height:44px}}
+.alert{display:none!important}
+@media(max-width:1000px){.layout{grid-template-columns:1fr}.section.full{grid-column:auto}.kpis{grid-template-columns:repeat(3,1fr)}.logo{height:72px;max-width:72px}}
 @media(max-width:650px){
 .topbar{padding:8px 10px;gap:8px;min-height:62px}
 .brand{max-width:34%}
@@ -191,7 +191,7 @@ body{overflow:hidden}
 <script>
 const API_URL='https://script.google.com/macros/s/AKfycbyEJsYcKCi8ZoHqlEyYM1NhDgW-hsVK48dr9Pz8Rqk-Ca-cFn9B9KnKlt2BjsQNp29t/exec';
 const REFRESH_MS=5000;
-const REQUEST_TIMEOUT_MS=8000;
+const REQUEST_TIMEOUT_MS=20000;
 let lastGoodData=null;
 let scrolling=false;
 
@@ -201,7 +201,18 @@ function formatDateLong(d){return d.toLocaleDateString("pt-BR",{weekday:"long",d
 function updateClock(){const d=new Date();$("clock").textContent=d.toLocaleTimeString("pt-BR",{hour12:false});$("dateText").textContent=formatDateLong(d);}
 setInterval(updateClock,1000);updateClock();
 
-const PANEL_RETRY_WAIT_MS=700;
+const PANEL_RETRY_WAIT_MS=1200;
+let lastPanelError=null;
+function classifyPanelError(e){
+  if(e?.name==="AbortError") return "TIMEOUT";
+  if(e instanceof TypeError) return "REDE/CORS";
+  if(/^HTTP /.test(String(e?.message||""))) return String(e.message);
+  return "RESPOSTA/APLICAÇÃO";
+}
+function registrarFalhaPainel(e){
+  lastPanelError={quando:new Date().toISOString(),tipo:classifyPanelError(e),mensagem:String(e?.message||e||"Erro desconhecido")};
+  console.warn("[Agenda Estágio][Painel] Falha de atualização",lastPanelError);
+}
 function wait(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
 async function apiOnce(payload){
   const controller=new AbortController();
@@ -283,8 +294,10 @@ async function refresh(){
     if(!data||!data.ok) throw new Error(data?.erro||"Resposta inválida");
     lastGoodData=data;render(data);
   }catch(e){
+    registrarFalhaPainel(e);
     $("connection").classList.add("bad");$("connectionText").textContent="Atualização temporariamente indisponível — tentando reconectar";
-    $("alert").textContent="Os últimos dados permanecem na tela enquanto tentamos restabelecer a atualização.";$("alert").classList.add("show");
+    /* Diagnóstico preservado sem tarja pública: detalhes ficam no console do navegador. */
+    $("alert").textContent="Os últimos dados permanecem na tela enquanto tentamos restabelecer a atualização.";$("alert").classList.remove("show");
     if(!lastGoodData){["waitingList","progressList","upcomingList"].forEach(id=>renderList(id,[],"Aguardando conexão com o sistema..."));}
   }
 }
