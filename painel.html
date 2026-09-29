@@ -234,12 +234,22 @@ function itemHtml(i){
   return `<article class="item ${itemClass(i.categoria)}"><div class="row1"><div class="name">${esc(i.nome)}</div><span class="badge">${esc(i.status)}</span></div><div class="meta"><span><strong>${esc(i.hora)}</strong>–${esc(i.horaFim)}</span><span>Responsável: <strong>${esc(i.responsavel||"EQUIPE")}</strong></span></div><div class="service">${esc(i.servico)}</div>${extra}</article>`;
 }
 function renderList(id,items,empty,ordinal){
-  if(!items.length){$(id).innerHTML=`<div class="empty">${esc(empty)}</div>`;return;}
-  const conteudo=items.map((item,idx)=>{
-    const card=itemHtml(item);
-    return ordinal ? card.replace('<article class="item ',`<article data-ord="${idx+1}" class="item `).replace('<div class="row1">',`<span class="ordinal">${idx+1}º</span><div class="row1">`) : card;
-  }).join("");
-  $(id).innerHTML=`<div class="scroll-track">${conteudo}</div>`;
+  const box=$(id);
+  let html;
+  if(!items.length){
+    html=`<div class="empty">${esc(empty)}</div>`;
+  }else{
+    const conteudo=items.map((item,idx)=>{
+      const card=itemHtml(item);
+      return ordinal ? card.replace('<article class="item ',`<article data-ord="${idx+1}" class="item `).replace('<div class="row1">',`<span class="ordinal">${idx+1}º</span><div class="row1">`) : card;
+    }).join("");
+    html=`<div class="scroll-track">${conteudo}</div>`;
+  }
+  /* V14.6 — não recria o DOM quando a lista não mudou.
+     Assim, a atualização de dados não interfere no ciclo visual de rolagem. */
+  if(box.innerHTML===html) return false;
+  box.innerHTML=html;
+  return true;
 }
 function setCount(id,n){$ (id).textContent=String(n||0);}
 function render(data){
@@ -250,17 +260,21 @@ function render(data){
   const upcoming=items.filter(i=>["PROGRAMADO","PRESENCA_LIBERADA","ATRASADO"].includes(i.categoria));
   const pending=items.filter(i=>i.categoria==="PENDENTE");
   /* Seção visual "Chamados agora" removida; categoria e KPI CHAMADO permanecem ativos. */
-  renderList("waitingList",waiting,"Ninguém aguardando no momento.");
-  renderList("progressList",progress,"Nenhum atendimento em andamento.");
-  renderList("upcomingList",upcoming,"Não há outros atendimentos programados para hoje.",true);
-  renderList("pendingList",pending,"Nenhum horário aguardando definição da equipe.");
+  const changedWaiting=renderList("waitingList",waiting,"Ninguém aguardando no momento.");
+  const changedProgress=renderList("progressList",progress,"Nenhum atendimento em andamento.");
+  const changedUpcoming=renderList("upcomingList",upcoming,"Não há outros atendimentos programados para hoje.",true);
+  const changedPending=renderList("pendingList",pending,"Nenhum horário aguardando definição da equipe.");
   $("pendingSection").style.display=pending.length?"block":"none";
   setCount("countWaiting",waiting.length);setCount("countProgress",progress.length);setCount("countUpcoming",upcoming.length);setCount("countPending",pending.length);
   const r=data.resumo||{};setCount("kWaiting",r.aguardando||waiting.length);setCount("kCalled",r.chamados||called.length);setCount("kProgress",r.emAtendimento||progress.length);setCount("kReady",(r.presencaLiberada||0)+(r.atrasados||0));setCount("kDone",r.concluidos||0);
   $("lastUpdate").textContent="Última atualização: "+(data.atualizadoHora||"--");
   $("connection").classList.remove("bad");$("connectionText").textContent="Atualização automática a cada 5 segundos";
   $("alert").classList.remove("show");
-  scheduleAutoScroll();
+  /* Reinicia somente a rolagem da lista cujo conteúdo realmente mudou. */
+  if(changedWaiting) iniciarRolagemLista("waitingList",2);
+  if(changedProgress) iniciarRolagemLista("progressList",2);
+  if(changedUpcoming) iniciarRolagemLista("upcomingList",2);
+  if(changedPending) iniciarRolagemLista("pendingList",1);
 }
 
 async function refresh(){
@@ -281,14 +295,16 @@ async function refreshLoop(){
   await refresh();
   refreshLoopTimer=setTimeout(refreshLoop,REFRESH_MS);
 }
-refreshLoop();
 
-let scrollTimers=[];
+const scrollTimers={};
 const scrollStates={};
 const SCROLL_INTERVAL_MS=6500;
+function limparRolagem(id){
+  if(scrollTimers[id]) clearTimeout(scrollTimers[id]);
+  delete scrollTimers[id];
+}
 function limparRolagens(){
-  scrollTimers.forEach(t=>clearTimeout(t));
-  scrollTimers=[];
+  Object.keys(scrollTimers).forEach(limparRolagem);
 }
 function aplicarPosicaoRolagem(id,limiteVisivel){
   const box=$(id);
@@ -313,17 +329,18 @@ function aplicarPosicaoRolagem(id,limiteVisivel){
   return {box,track,cards,maxPos,passo,st};
 }
 function iniciarRolagemLista(id,limiteVisivel){
+  /* Cada lista possui seu próprio timer. Atualizações das demais listas não o cancelam. */
+  limparRolagem(id);
   const info=aplicarPosicaoRolagem(id,limiteVisivel);
   if(!info) return;
   const agendar=()=>{
     const atual=aplicarPosicaoRolagem(id,limiteVisivel);
-    if(!atual) return;
-    const {track,maxPos,passo,st}=atual;
+    if(!atual){limparRolagem(id);return;}
     const now=Date.now();
-    const delay=Math.max(80,st.nextAt-now);
-    const t=setTimeout(()=>{
+    const delay=Math.max(80,atual.st.nextAt-now);
+    scrollTimers[id]=setTimeout(()=>{
       const vivo=aplicarPosicaoRolagem(id,limiteVisivel);
-      if(!vivo) return;
+      if(!vivo){limparRolagem(id);return;}
       const state=vivo.st;
       state.pos=state.pos>=vivo.maxPos?0:state.pos+1;
       state.nextAt=Date.now()+SCROLL_INTERVAL_MS;
@@ -331,18 +348,18 @@ function iniciarRolagemLista(id,limiteVisivel){
       vivo.track.style.transform=state.pos?`translateY(-${state.pos*vivo.passo}px)`:"translateY(0)";
       agendar();
     },delay);
-    scrollTimers.push(t);
   };
   agendar();
 }
 function scheduleAutoScroll(){
-  limparRolagens();
   iniciarRolagemLista("waitingList",2);
   iniciarRolagemLista("progressList",2);
   iniciarRolagemLista("upcomingList",2);
   iniciarRolagemLista("pendingList",1);
 }
 window.addEventListener("resize",scheduleAutoScroll);
+/* Inicia o ciclo de dados somente após toda a mecânica de rolagem estar inicializada. */
+refreshLoop();
 </script>
 </body>
 </html>
