@@ -237,30 +237,33 @@ const SERVICOS={};
 const CATALOGO_SERVICOS={};
 let pessoaValidada=false,servicoSelecionado="",dataSelecionada="",horaSelecionada="",manageToken="",manageAppointment=null,rescheduleDate="",rescheduleTime="";
 let cpfValidado="";
-/* Otimização V14.6 — somente página pública.
-   Reaproveita a consulta do CPF já concluída e evita chamadas idênticas simultâneas. */
-let consultaCpfCache={cpf:"",resposta:null};
-let consultaCpfEmAndamento={cpf:"",promise:null};
-const consultasLeituraEmAndamento=new Map();
-function chaveConsulta(acao,dados){return acao+"|"+JSON.stringify(dados||{});}
-async function apiLeituraUnica(acao,dados={}){
-  const chave=chaveConsulta(acao,dados);
-  if(consultasLeituraEmAndamento.has(chave)) return consultasLeituraEmAndamento.get(chave);
-  const promessa=api(acao,dados).finally(()=>consultasLeituraEmAndamento.delete(chave));
-  consultasLeituraEmAndamento.set(chave,promessa);
-  return promessa;
+/* V14.6 — otimização exclusiva da página pública.
+   Uma única consulta de situação é feita por CPF enquanto o valor não mudar.
+   Não há retry automático desta consulta: evita duplicar execuções lentas no Apps Script. */
+let consultaCpfEstado={cpf:"",promise:null,result:null};
+function invalidarConsultaCpfSeMudou(d){
+  if(consultaCpfEstado.cpf && consultaCpfEstado.cpf!==d){
+    consultaCpfEstado={cpf:"",promise:null,result:null};
+  }
 }
-async function consultarCpfUmaVez(d){
-  if(consultaCpfCache.cpf===d && consultaCpfCache.resposta) return consultaCpfCache.resposta;
-  if(consultaCpfEmAndamento.cpf===d && consultaCpfEmAndamento.promise) return consultaCpfEmAndamento.promise;
-  const promessa=apiLeituraUnica("verificarAgendamentoAberto",{cpf:d}).then(r=>{
-    if(r && r.ok) consultaCpfCache={cpf:d,resposta:r};
-    return r;
-  }).finally(()=>{
-    if(consultaCpfEmAndamento.cpf===d) consultaCpfEmAndamento={cpf:"",promise:null};
-  });
-  consultaCpfEmAndamento={cpf:d,promise:promessa};
-  return promessa;
+async function consultarSituacaoCpfUmaVez(d){
+  if(consultaCpfEstado.cpf===d && consultaCpfEstado.result) return consultaCpfEstado.result;
+  if(consultaCpfEstado.cpf===d && consultaCpfEstado.promise) return consultaCpfEstado.promise;
+  const promise=apiUmaTentativa("verificarAgendamentoAberto",{cpf:d},30000)
+    .then(r=>{
+      if(consultaCpfEstado.cpf===d){
+        consultaCpfEstado.result=r;
+        consultaCpfEstado.promise=null;
+      }
+      return r;
+    })
+    .catch(e=>{
+      if(consultaCpfEstado.cpf===d) consultaCpfEstado.promise=null;
+      if(e && e.name==="AbortError") throw new Error("A consulta do CPF demorou mais de 30 segundos. Tente novamente em alguns instantes.");
+      throw e;
+    });
+  consultaCpfEstado={cpf:d,promise,result:null};
+  return promise;
 }
 let identificacaoVerificada={cpf:"",nome:"",email:"",telefone:""};
 
@@ -348,11 +351,9 @@ const ACOES_LEITURA_COM_RETRY=new Set([
 const RETRY_LEITURA_ESPERA_MS=700;
 function esperar(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
 function erroTransitórioDeRede(e){
-  /* AbortError normalmente significa apenas que o navegador desistiu de esperar.
-     Repetir imediatamente pode duplicar uma execução ainda ativa no Apps Script. */
-  return !!(e && e instanceof TypeError);
+  return !!(e && (e.name==="AbortError" || e instanceof TypeError));
 }
-async function apiUmaTentativa(acao,dados={},timeoutMs=30000){
+async function apiUmaTentativa(acao,dados={},timeoutMs=15000){
   const controller=new AbortController();
   const timer=setTimeout(()=>controller.abort(),timeoutMs);
   try{
@@ -370,7 +371,7 @@ async function apiUmaTentativa(acao,dados={},timeoutMs=30000){
     catch(_){throw new Error("A resposta do sistema não pôde ser interpretada. Tente novamente.");}
   }finally{clearTimeout(timer);}
 }
-async function api(acao,dados={},timeoutMs=30000){
+async function api(acao,dados={},timeoutMs=15000){
   const permiteRetry=ACOES_LEITURA_COM_RETRY.has(acao);
   try{
     return await apiUmaTentativa(acao,dados,timeoutMs);
@@ -384,7 +385,7 @@ async function api(acao,dados={},timeoutMs=30000){
         throw e2;
       }
     }
-    if(e && e.name==="AbortError") throw new Error("A consulta demorou mais que o esperado. Tente novamente em alguns instantes.");
+    if(e && e.name==="AbortError") throw new Error("A operação demorou mais de 15 segundos. Antes de repetir, verifique se ela já foi concluída.");
     throw e;
   }
 }
@@ -419,8 +420,6 @@ function validarCpfLocalParaAcao(){
   return d;
 }
 function resetarFluxoPorCpf(){
-  const atual=normalizarCPF(cpf.value);
-  if(consultaCpfCache.cpf && consultaCpfCache.cpf!==atual) consultaCpfCache={cpf:"",resposta:null};
   cpfValidado="";
   pessoaValidada=false;
   identificacaoVerificada={cpf:"",nome:"",email:"",telefone:""};
@@ -431,6 +430,7 @@ function resetarFluxoPorCpf(){
 }
 async function validarCpfAutomaticamente(){
   const d=normalizarCPF(cpf.value);
+  invalidarConsultaCpfSeMudou(d);
   cpf.value=formatarCPF(d);
   cpf.classList.remove("cpf-ok","cpf-error");
   if(d.length<11){
@@ -446,7 +446,7 @@ async function validarCpfAutomaticamente(){
   }
   setNotice(cpfStatus,"info","<strong>CPF matematicamente válido.</strong><br>Consultando se existe atendimento em aberto...");
   try{
-    const r=await consultarCpfUmaVez(d);
+    const r=await consultarSituacaoCpfUmaVez(d);
     if(normalizarCPF(cpf.value)!==d) return;
     if(!r.ok)throw new Error(r.erro);
     cpfValidado=d;
@@ -817,7 +817,11 @@ verificar.onclick=async()=>{
   verificar.textContent="Verificando...";
   setNotice(identityStatus,"info","Validando os dados de contato...");
   try{
-    const r=await consultarCpfUmaVez(cpfValidado);
+    /* O CPF já foi consultado para chegar a cpfValidado. Reutiliza exatamente
+       essa resposta enquanto o CPF não mudar, sem nova chamada ao servidor. */
+    const r=(consultaCpfEstado.cpf===cpfValidado && consultaCpfEstado.result)
+      ? consultaCpfEstado.result
+      : await consultarSituacaoCpfUmaVez(cpfValidado);
     if(!r.ok)throw new Error(r.erro);
     if(r.agendamentoAberto){
       pessoaValidada=false;
@@ -851,7 +855,7 @@ async function registrarPresencaPublicaAtual(){
   }
 }
 
-async function selecionarServico(s){if(!pessoaValidada)return;servicoSelecionado=s;calendar.dataset.selectedDate="";dateCard.classList.remove("step-disabled");calendarWrap.classList.add("hidden");setNotice(calendarStatus,"info","Consultando datas...");try{const r=await apiLeituraUnica("listarDatasDisponiveis",{servico:s});if(!r.ok)throw new Error(r.erro);if(!r.datas.length)return setNotice(calendarStatus,"warn","Não há datas disponíveis para este serviço.");renderCalendar(r.datas,calendar,monthTitle,d=>selecionarData(d));calendarWrap.classList.remove("hidden");calendarStatus.classList.add("hidden")}catch(e){setNotice(calendarStatus,"error",e.message)}}
+async function selecionarServico(s){if(!pessoaValidada)return;servicoSelecionado=s;calendar.dataset.selectedDate="";dateCard.classList.remove("step-disabled");calendarWrap.classList.add("hidden");setNotice(calendarStatus,"info","Consultando datas...");try{const r=await api("listarDatasDisponiveis",{servico:s});if(!r.ok)throw new Error(r.erro);if(!r.datas.length)return setNotice(calendarStatus,"warn","Não há datas disponíveis para este serviço.");renderCalendar(r.datas,calendar,monthTitle,d=>selecionarData(d));calendarWrap.classList.remove("hidden");calendarStatus.classList.add("hidden")}catch(e){setNotice(calendarStatus,"error",e.message)}}
 function renderCalendar(datas,container,title,cb){
   const futuras=[...new Set((datas||[]).filter(d=>!dataPassadaCliente(d)))].sort((a,b)=>a.split("/").reverse().join("-").localeCompare(b.split("/").reverse().join("-")));
   if(!futuras.length){container.innerHTML="";if(title)title.textContent="";return;}
@@ -876,7 +880,7 @@ function renderCalendar(datas,container,title,cb){
   };
   if(prevBtn)prevBtn.onclick=()=>{if(indice>0){indice--;desenhar();}};if(nextBtn)nextBtn.onclick=()=>{if(indice<meses.length-1){indice++;desenhar();}};desenhar();
 }
-async function selecionarData(d){dataSelecionada=d;timeCard.classList.remove("step-disabled");setNotice(timeStatus,"info","Consultando horários...");try{const r=await apiLeituraUnica("listarHorariosDisponiveis",{servico:servicoSelecionado,data:d});if(!r.ok)throw new Error(r.erro);renderSlots(r.horarios,slots,h=>{horaSelecionada=h;summary.classList.remove("hidden");summary.innerHTML=`<strong>Resumo:</strong><br>${SERVICOS[servicoSelecionado]}<br>${d} • Horário: ${h}`;confirmar.disabled=false})}catch(e){setNotice(timeStatus,"error",e.message)}}
+async function selecionarData(d){dataSelecionada=d;timeCard.classList.remove("step-disabled");setNotice(timeStatus,"info","Consultando horários...");try{const r=await api("listarHorariosDisponiveis",{servico:servicoSelecionado,data:d});if(!r.ok)throw new Error(r.erro);renderSlots(r.horarios,slots,h=>{horaSelecionada=h;summary.classList.remove("hidden");summary.innerHTML=`<strong>Resumo:</strong><br>${SERVICOS[servicoSelecionado]}<br>${d} • Horário: ${h}`;confirmar.disabled=false})}catch(e){setNotice(timeStatus,"error",e.message)}}
 function renderSlots(hs,container,cb){
   container.innerHTML="";
 
