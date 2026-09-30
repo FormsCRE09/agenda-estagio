@@ -264,6 +264,23 @@ body{overflow:hidden}
   .item{padding-top:8px!important;padding-bottom:8px!important;}
   .upcoming-final{grid-column:1 / -1;}
 }
+
+/* V14.6 — 30/09/2026 — L1 único em todos os momentos.
+   Full HD (1920×1080) permanece como referência.
+   Cada momento exibe 1 × L1. Próximos é a única lista com duas colunas,
+   portanto mostra dois atendimentos simultaneamente. */
+@media (min-width:1001px){
+  .list.two-visible,.list.upcoming-scroll,.list.ready-scroll,.list.pending-scroll{
+    height:var(--moment-viewport)!important;max-height:var(--moment-viewport)!important;
+  }
+  .layout{row-gap:14px!important}
+}
+.status-stack{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:3px;max-width:44%}
+.status-stack .badge{align-self:flex-end}
+.status-stack .call-note{margin:0!important;padding:0!important;border:0!important;max-width:230px;font-size:clamp(.60rem,.68vw,.72rem)!important;line-height:1.08;font-weight:800;text-align:right;color:#526779}
+.ready .status-stack .call-note{color:#7e6320}.late .status-stack .call-note{color:#85571b}.pending .status-stack .call-note{color:#675a49}
+@media(max-width:650px){.status-stack{max-width:48%}.status-stack .call-note{font-size:.58rem!important;max-width:150px}}
+
 </style>
 </head>
 <body>
@@ -357,7 +374,7 @@ function itemHtml(i){
   else if(i.categoria==="AGUARDANDO" && i.presencaHora) extra=`<div class="call-note">Presença registrada às ${esc(i.presencaHora)}</div>`;
   else if(i.categoria==="PRESENCA_LIBERADA") extra=`<div class="call-note">Registro de presença já disponível</div>`;
   else if(i.categoria==="ATRASADO") extra=`<div class="call-note">Atraso de ${Number(i.atrasoMin||0)} min • presença ainda permitida</div>`;
-  return `<article class="item ${itemClass(i.categoria)}"><div class="row1"><div class="name">${esc(i.nome)}</div><span class="badge">${esc(i.status)}</span></div><div class="meta"><span><strong>${esc(i.hora)}</strong>–${esc(i.horaFim)}</span><span>Responsável: <strong>${esc(i.responsavel||"EQUIPE")}</strong></span></div><div class="service">${esc(i.servico)}</div>${extra}</article>`;
+  return `<article class="item ${itemClass(i.categoria)}"><div class="row1"><div class="name">${esc(i.nome)}</div><div class="status-stack"><span class="badge">${esc(i.status)}</span>${extra}</div></div><div class="meta"><span><strong>${esc(i.hora)}</strong>–${esc(i.horaFim)}</span><span>Responsável: <strong>${esc(i.responsavel||"EQUIPE")}</strong></span></div><div class="service">${esc(i.servico)}</div></article>`;
 }
 function renderList(id,items,empty,ordinal){
   const box=$(id);
@@ -430,11 +447,11 @@ function render(data){
   $("alert").classList.remove("show");
   calibrarMomentosPorL1();
   /* Reinicia somente a rolagem da lista cujo conteúdo realmente mudou. */
-  if(changedWaiting) iniciarRolagemLista("waitingList",2);
-  if(changedProgress) iniciarRolagemLista("progressList",2);
-  if(changedUpcoming) iniciarRolagemLista("upcomingList",2);
-  if(changedReady) iniciarRolagemLista("readyList",2);
-  if(changedPending) iniciarRolagemLista("pendingList",2);
+  if(changedWaiting) iniciarRolagemLista("waitingList",1);
+  if(changedProgress) iniciarRolagemLista("progressList",1);
+  if(changedUpcoming) iniciarRolagemLista("upcomingList",1);
+  if(changedReady) iniciarRolagemLista("readyList",1);
+  if(changedPending) iniciarRolagemLista("pendingList",1);
 }
 
 async function refresh(){
@@ -544,24 +561,24 @@ function calibrarMomentosPorL1(){
   }
   /* Referência Full HD segura quando ainda não há duas linhas reais para medir. */
   if(!Number.isFinite(l1)||l1<60||l1>150)l1=82;
-  /* Acabamento Full HD: remove 4 px da folga visual observada sem alterar o passo real da rolagem. */
-  l1=Math.max(60,l1-4);
+  /* L1 é a unidade única de altura visual de TODOS os momentos.
+     A referência continua sendo a geometria real de Próximos atendimentos em Full HD. */
   const estilos=getComputedStyle(box);
   const padTop=parseFloat(estilos.paddingTop)||0;
   const padBottom=parseFloat(estilos.paddingBottom)||0;
-  /* 2 × L1 é a área entre o início da primeira linha e o início da terceira.
-     Somamos apenas os paddings da própria lista para que nenhuma linha seja cortada. */
-  const viewport=Math.ceil((2*l1)+padTop+padBottom);
+  /* Nesta etapa exibimos uma única linha por momento.
+     Em Próximos, essa linha possui duas colunas, portanto dois atendimentos simultâneos. */
+  const viewport=Math.ceil(l1+padTop+padBottom);
   document.documentElement.style.setProperty("--moment-l1",`${Math.ceil(l1)}px`);
   document.documentElement.style.setProperty("--moment-viewport",`${viewport}px`);
 }
 
 function scheduleAutoScroll(){
-  iniciarRolagemLista("waitingList",2);
-  iniciarRolagemLista("progressList",2);
-  iniciarRolagemLista("upcomingList",2);
-  iniciarRolagemLista("readyList",2);
-  iniciarRolagemLista("pendingList",2);
+  iniciarRolagemLista("waitingList",1);
+  iniciarRolagemLista("progressList",1);
+  iniciarRolagemLista("upcomingList",1);
+  iniciarRolagemLista("readyList",1);
+  iniciarRolagemLista("pendingList",1);
 }
 window.addEventListener("resize",()=>{calibrarMomentosPorL1();scheduleAutoScroll();});
 /* Inicia o ciclo de dados somente após toda a mecânica de rolagem estar inicializada. */
