@@ -363,6 +363,22 @@ body{overflow:hidden}
 /* V14.6 — grade geométrica final / área útil Full HD — 30/09/2026
    Uma única régua (L1) controla os cinco momentos. O painel é mantido dentro
    da área útil vertical da tela, com pares simétricos e sem linhas parciais. */
+/* V14.6 — ajuste cirúrgico do ponto de repouso do carrossel central — 30/09/2026
+   Presença/liberada e Horários encerrados passam a usar a mesma origem visual
+   do carrossel aprovado em Aguardando: o primeiro cartão começa imediatamente
+   na área útil da lista e o espaçamento existe somente ENTRE cartões. */
+@media (min-width:1001px){
+  #readyList .scroll-track,
+  #pendingList .scroll-track{
+    gap:6px!important;
+  }
+  #readyList .item,
+  #pendingList .item{
+    margin-top:0!important;
+    margin-bottom:0!important;
+  }
+}
+
 @media (min-width:1001px){
   .wrap{
     height:calc(100vh - 126px)!important;
