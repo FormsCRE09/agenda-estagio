@@ -588,7 +588,7 @@ function detectarNovasChamadas(called){
 function render(data){
   const items=Array.isArray(data.itens)?data.itens:[];
   const called=items.filter(i=>i.categoria==="CHAMADO");
-  detectarNovasChamadas(called);
+  /* CHAMADO já foi processado prioritariamente assim que a resposta chegou. */
   const waiting=items.filter(i=>i.categoria==="AGUARDANDO");
   const progress=items.filter(i=>i.categoria==="EM_ATENDIMENTO");
   const upcoming=items.filter(i=>i.categoria==="PROGRAMADO");
@@ -618,10 +618,24 @@ function render(data){
 }
 
 async function refresh(){
+  const inicioConsulta=performance.now();
   try{
     const data=await api({acao:"listarPainelPublico"});
     if(!data||!data.ok) throw new Error(data?.erro||"Resposta inválida");
-    lastGoodData=data;render(data);
+
+    /* PRIORIDADE OPERACIONAL:
+       assim que a resposta chega, CHAMADO é processado antes de qualquer
+       reconstrução/calibração/rolagem das listas. */
+    const itensRecebidos=Array.isArray(data.itens)?data.itens:[];
+    detectarNovasChamadas(itensRecebidos.filter(i=>i.categoria==="CHAMADO"));
+
+    lastGoodData=data;
+    render(data);
+
+    console.debug("[Agenda Estágio][Painel] atualização concluída",{
+      duracaoMs:Math.round(performance.now()-inicioConsulta),
+      recebidoEm:new Date().toISOString()
+    });
   }catch(e){
     registrarFalhaPainel(e);
     $("connection").classList.add("bad");$("connectionText").textContent="Atualização temporariamente indisponível — tentando reconectar";
@@ -630,12 +644,26 @@ async function refresh(){
     if(!lastGoodData){["waitingList","progressList","upcomingList","readyList"].forEach(id=>renderList(id,[],"Aguardando conexão com o sistema..."));}
   }
 }
-/* V13.20 — ciclo controlado: nunca inicia nova atualização enquanto a anterior está em andamento. */
+/* V14.6 — polling com cadência-alvo real de 5 s.
+   O intervalo é contado desde o INÍCIO da consulta anterior.
+   Nunca há duas consultas simultâneas: se a resposta levar >=5 s,
+   a próxima começa imediatamente após a conclusão, sem acrescentar
+   mais 5 s de espera artificial. */
 let refreshLoopTimer=null;
+let refreshEmAndamento=false;
 async function refreshLoop(){
   clearTimeout(refreshLoopTimer);
-  await refresh();
-  refreshLoopTimer=setTimeout(refreshLoop,REFRESH_MS);
+  if(refreshEmAndamento)return;
+  refreshEmAndamento=true;
+  const inicio=performance.now();
+  try{
+    await refresh();
+  }finally{
+    refreshEmAndamento=false;
+    const decorrido=performance.now()-inicio;
+    const espera=Math.max(0,REFRESH_MS-decorrido);
+    refreshLoopTimer=setTimeout(refreshLoop,espera);
+  }
 }
 
 const scrollTimers={};
