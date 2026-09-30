@@ -327,6 +327,22 @@ body{overflow:hidden}
   .item .status-stack{top:8px;right:10px;max-width:48%}
 }
 
+
+/* V14.6 — áudio de chamada: controle de desbloqueio exigido por navegadores modernos.
+   Some automaticamente depois que o áudio estiver liberado. */
+.sound-enable{
+  position:fixed;right:18px;bottom:16px;z-index:9998;
+  display:none;align-items:center;gap:7px;
+  border:1px solid #c8d6e3;border-radius:999px;padding:7px 11px;
+  background:rgba(255,255,255,.96);color:#0b4777;
+  font:800 11px/1.1 inherit;letter-spacing:.15px;
+  box-shadow:0 5px 18px rgba(18,49,78,.14);cursor:pointer;
+}
+.call-audio-locked .sound-enable{display:flex}
+.sound-enable.ok{display:none!important}
+.sound-icon{font-size:15px;line-height:1}
+@media(max-width:650px){.sound-enable{right:10px;bottom:10px;padding:6px 9px}.sound-text{font-size:9px}}
+
 </style>
 </head>
 <body>
@@ -362,6 +378,7 @@ body{overflow:hidden}
     <section class="section moment-section" id="pendingSection"><div class="section-head"><h3>Horários encerrados — em verificação pela equipe</h3><span class="count" id="countPending">0</span></div><div class="list auto-list pending-scroll two-moment-rows" id="pendingList"></div></section>
     <section class="section full moment-section upcoming-final"><div class="section-head"><h3>Próximos atendimentos</h3><span class="count" id="countUpcoming">0</span></div><div class="list auto-list upcoming-scroll two-moment-rows" id="upcomingList"></div></section>
   </div>
+  <button id="soundEnable" class="sound-enable" type="button" onclick="desbloquearSomChamada().then(ok=>{if(ok)this.classList.add('ok')})" aria-label="Ativar som das chamadas"><span class="sound-icon">🔊</span><span class="sound-text">ATIVAR SOM DAS CHAMADAS</span></button>
   <div class="foot"><span class="privacy">Por privacidade, são exibidos somente o primeiro nome e a inicial do último sobrenome. CPF, telefone e e-mail não são exibidos neste painel.</span><span id="lastUpdate">Última atualização: --</span></div>
 </main>
 <div id="callOverlay" class="call-overlay" aria-live="assertive" aria-atomic="true"><div class="call-popup"><div class="call-head"><span class="call-signal" aria-hidden="true"><svg viewBox="0 0 64 64"><path d="M7 26c0-3.3 2.7-6 6-6h10l18-12c3.3-2.2 8 .2 8 4.2v39.6c0 4-4.7 6.4-8 4.2L23 44H13c-3.3 0-6-2.7-6-6V26zm46.3-5.6a3 3 0 0 1 4.2.4 18 18 0 0 1 0 22.4 3 3 0 1 1-4.6-3.8 12 12 0 0 0 0-14.8 3 3 0 0 1 .4-4.2z"/></svg></span>CHAMADA PARA ATENDIMENTO</div><div class="call-body"><div id="callName" class="call-name">—</div><div id="callDestination" class="call-destination"><span class="label">Compareça ao atendimento de</span><span class="attendant">EQUIPE</span></div><div id="callService" class="call-service"></div></div></div></div>
@@ -446,13 +463,52 @@ let calledInitialized=false;
 const callQueue=[];
 let callShowing=false;
 function callKey(i){return String(i.codigo||i.id||[i.nome,i.hora,i.servico,i.chamadoPor||i.atendidoPor||i.responsavel].join("|"));}
-function tentarSomChamada(){
-  try{
-    const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;
-    const ctx=new AC(),osc=ctx.createOscillator(),gain=ctx.createGain();
-    osc.type="sine";osc.frequency.setValueAtTime(880,ctx.currentTime);gain.gain.setValueAtTime(.0001,ctx.currentTime);gain.gain.exponentialRampToValueAtTime(.16,ctx.currentTime+.035);gain.gain.exponentialRampToValueAtTime(.0001,ctx.currentTime+.45);osc.connect(gain);gain.connect(ctx.destination);osc.start();osc.stop(ctx.currentTime+.46);
-  }catch(_e){}
+let callAudioCtx=null;
+let callAudioUnlocked=false;
+function getCallAudioContext(){
+  const AC=window.AudioContext||window.webkitAudioContext;
+  if(!AC)return null;
+  if(!callAudioCtx)callAudioCtx=new AC();
+  return callAudioCtx;
 }
+async function desbloquearSomChamada(){
+  try{
+    const ctx=getCallAudioContext();if(!ctx)return false;
+    if(ctx.state==="suspended")await ctx.resume();
+    callAudioUnlocked=ctx.state==="running";
+    document.documentElement.classList.toggle("call-audio-locked",!callAudioUnlocked);
+    return callAudioUnlocked;
+  }catch(_e){
+    callAudioUnlocked=false;
+    document.documentElement.classList.add("call-audio-locked");
+    return false;
+  }
+}
+function tocarPulsoChamada(ctx,inicio,freq,dur=.34,vol=.20){
+  const osc=ctx.createOscillator(),gain=ctx.createGain();
+  osc.type="sine";osc.frequency.setValueAtTime(freq,inicio);
+  gain.gain.setValueAtTime(.0001,inicio);
+  gain.gain.exponentialRampToValueAtTime(vol,inicio+.025);
+  gain.gain.exponentialRampToValueAtTime(.0001,inicio+dur);
+  osc.connect(gain);gain.connect(ctx.destination);osc.start(inicio);osc.stop(inicio+dur+.02);
+}
+async function tentarSomChamada(){
+  try{
+    const ok=await desbloquearSomChamada();
+    if(!ok)return false;
+    const ctx=getCallAudioContext(),t=ctx.currentTime+.02;
+    /* Sinal curto em três pulsos, perceptível em ambiente de atendimento sem ser agressivo. */
+    tocarPulsoChamada(ctx,t,880,.30,.22);
+    tocarPulsoChamada(ctx,t+.38,1046,.30,.20);
+    tocarPulsoChamada(ctx,t+.76,880,.38,.22);
+    return true;
+  }catch(_e){return false;}
+}
+/* Navegadores de TV/Chrome podem bloquear áudio sem gesto do usuário.
+   Qualquer clique/toque/tecla desbloqueia o contexto para as chamadas seguintes. */
+["pointerdown","touchstart","keydown"].forEach(ev=>{
+  window.addEventListener(ev,()=>{desbloquearSomChamada();},{passive:true});
+});
 function mostrarProximaChamada(){
   if(callShowing||!callQueue.length)return;
   callShowing=true;const i=callQueue.shift();
@@ -614,11 +670,15 @@ function calibrarMomentosPorL1(){
   const padBottom=parseFloat(estilos.paddingBottom)||0;
   /* Nesta etapa exibimos uma única linha por momento.
      Em Próximos, essa linha possui duas colunas, portanto dois atendimentos simultâneos. */
-  const viewport=Math.ceil(l1+padTop+padBottom);
+  /* Full HD real: Próximos precisa terminar antes de insinuar a linha seguinte.
+     Os mesmos 6 px retirados daqui são transferidos ao par superior. */
+  const AJUSTE_VERTICAL_FULLHD=6;
+  const viewport=Math.ceil(l1+padTop+padBottom-AJUSTE_VERTICAL_FULLHD);
   document.documentElement.style.setProperty("--moment-l1",`${Math.ceil(l1)}px`);
   document.documentElement.style.setProperty("--moment-viewport",`${viewport}px`);
-  /* Aguardando e Em atendimento são um par visual: dois cards L1 simultâneos. */
-  const viewportDuplo=Math.ceil((2*l1)+padTop+padBottom);
+  /* Aguardando e Em atendimento permanecem simétricos, com 2 × L1,
+     recebendo exatamente o espaço retirado de Próximos. */
+  const viewportDuplo=Math.ceil((2*l1)+padTop+padBottom+AJUSTE_VERTICAL_FULLHD);
   document.documentElement.style.setProperty("--moment-viewport-double",`${viewportDuplo}px`);
 }
 
@@ -630,6 +690,8 @@ function scheduleAutoScroll(){
   iniciarRolagemLista("pendingList",1);
 }
 window.addEventListener("resize",()=>{calibrarMomentosPorL1();scheduleAutoScroll();});
+/* Estado inicial do áudio: até um gesto válido, o navegador pode impedir o sinal sonoro. */
+if(window.AudioContext||window.webkitAudioContext)document.documentElement.classList.add("call-audio-locked");
 /* Inicia o ciclo de dados somente após toda a mecânica de rolagem estar inicializada. */
 refreshLoop();
 </script>
