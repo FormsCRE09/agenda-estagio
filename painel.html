@@ -251,6 +251,14 @@ body{overflow:hidden}
   .section-head{min-height:42px;box-sizing:border-box}
   #upcomingList .scroll-track{row-gap:7px!important}
 }
+
+/* V14.6 — refinamento Full HD: momentos em ordem operacional, L1 ligeiramente mais compacto
+   e respiro vertical uniforme. Próximos permanece como último momento e única lista em 2 colunas. */
+@media (min-width:1001px){
+  .layout{row-gap:14px!important;}
+  .item{padding-top:8px!important;padding-bottom:8px!important;}
+  .upcoming-final{grid-column:1 / -1;}
+}
 </style>
 </head>
 <body>
@@ -282,9 +290,9 @@ body{overflow:hidden}
     
     <section class="section"><div class="section-head"><h3>Aguardando atendimento</h3><span class="count" id="countWaiting">0</span></div><div class="list auto-list two-visible" id="waitingList"></div></section>
     <section class="section"><div class="section-head"><h3>Em atendimento</h3><span class="count" id="countProgress">0</span></div><div class="list auto-list two-visible" id="progressList"></div></section>
-    <section class="section full moment-section"><div class="section-head"><h3>Próximos atendimentos</h3><span class="count" id="countUpcoming">0</span></div><div class="list auto-list upcoming-scroll two-moment-rows" id="upcomingList"></div></section>
     <section class="section moment-section" id="readySection"><div class="section-head"><h3>Presença registrada/liberada</h3><span class="count" id="countReady">0</span></div><div class="list auto-list ready-scroll two-moment-rows" id="readyList"></div></section>
     <section class="section moment-section" id="pendingSection"><div class="section-head"><h3>Horários encerrados — em verificação pela equipe</h3><span class="count" id="countPending">0</span></div><div class="list auto-list pending-scroll two-moment-rows" id="pendingList"></div></section>
+    <section class="section full moment-section upcoming-final"><div class="section-head"><h3>Próximos atendimentos</h3><span class="count" id="countUpcoming">0</span></div><div class="list auto-list upcoming-scroll two-moment-rows" id="upcomingList"></div></section>
   </div>
   <div class="foot"><span class="privacy">Por privacidade, são exibidos somente o primeiro nome e a inicial do último sobrenome. CPF, telefone e e-mail não são exibidos neste painel.</span><span id="lastUpdate">Última atualização: --</span></div>
 </main>
@@ -447,7 +455,9 @@ async function refreshLoop(){
 
 const scrollTimers={};
 const scrollStates={};
-const SCROLL_INTERVAL_MS=6500;
+/* Pausa de leitura + movimento suave, no mesmo princípio visual do rotator da barra superior. */
+const SCROLL_PAUSE_MS=5200;
+const SCROLL_MOVE_MS=1500;
 function limparRolagem(id){
   if(scrollTimers[id]) clearTimeout(scrollTimers[id]);
   delete scrollTimers[id];
@@ -459,40 +469,61 @@ function configuracaoRolagem(id,limiteVisivel){
   const duasColunas=id==="upcomingList" && matchMedia("(orientation:landscape) and (min-width:800px)").matches;
   return {colunas:duasColunas?2:1,linhasVisiveis:limiteVisivel};
 }
-function aplicarPosicaoRolagem(id,limiteVisivel){
+function prepararRolagemContinua(id,limiteVisivel){
   const box=$(id);if(!box)return null;
-  const track=box.querySelector(".scroll-track");
-  const cards=track?Array.from(track.querySelectorAll(".item")):[];
+  const track=box.querySelector(".scroll-track");if(!track)return null;
+  /* Clones existem apenas para completar a passagem final sem voltar bruscamente para o topo. */
+  track.querySelectorAll(".scroll-clone").forEach(n=>n.remove());
+  const cards=Array.from(track.querySelectorAll(".item:not(.scroll-clone)"));
   const cfg=configuracaoRolagem(id,limiteVisivel);
   const totalLinhas=Math.ceil(cards.length/cfg.colunas);
-  if(!track||totalLinhas<=cfg.linhasVisiveis){
-    if(track){track.style.transition="none";track.style.transform="translateY(0)";}
-    scrollStates[id]={pos:0,nextAt:Date.now()+SCROLL_INTERVAL_MS,count:cards.length,colunas:cfg.colunas};return null;
+  if(totalLinhas<=cfg.linhasVisiveis){
+    track.style.transition="none";track.style.transform="translateY(0)";
+    scrollStates[id]={pos:0,count:cards.length,colunas:cfg.colunas,totalLinhas};
+    return null;
   }
-  const maxPos=totalLinhas-cfg.linhasVisiveis,now=Date.now();
+  /* Duplica somente as duas primeiras linhas. Assim o fim segue naturalmente para o início. */
+  const qtdClones=Math.min(cards.length,cfg.linhasVisiveis*cfg.colunas);
+  for(let i=0;i<qtdClones;i++){
+    const clone=cards[i].cloneNode(true);clone.classList.add("scroll-clone");clone.setAttribute("aria-hidden","true");track.appendChild(clone);
+  }
+  const todos=Array.from(track.querySelectorAll(".item"));
   let st=scrollStates[id];
-  if(!st||st.count!==cards.length||st.colunas!==cfg.colunas)st={pos:0,nextAt:now+SCROLL_INTERVAL_MS,count:cards.length,colunas:cfg.colunas};
-  st.pos=Math.min(st.pos,maxPos);
-  const alvo=cards[Math.min(st.pos*cfg.colunas,cards.length-1)];
-  const deslocamento=alvo?alvo.offsetTop:0;
-  track.style.transition="none";track.style.transform=deslocamento?`translateY(-${deslocamento}px)`:"translateY(0)";
-  scrollStates[id]=st;return {box,track,cards,maxPos,deslocamento,st,cfg};
+  if(!st||st.count!==cards.length||st.colunas!==cfg.colunas)st={pos:0,count:cards.length,colunas:cfg.colunas,totalLinhas};
+  st.pos=Math.min(st.pos,totalLinhas);
+  scrollStates[id]=st;
+  return {box,track,cards,todos,cfg,totalLinhas,st};
+}
+function yDaLinha(info,linha){
+  const idx=Math.min(linha*info.cfg.colunas,info.todos.length-1);
+  return info.todos[idx]?.offsetTop||0;
 }
 function iniciarRolagemLista(id,limiteVisivel){
-  limparRolagem(id);const info=aplicarPosicaoRolagem(id,limiteVisivel);if(!info)return;
-  const agendar=()=>{
-    const atual=aplicarPosicaoRolagem(id,limiteVisivel);if(!atual){limparRolagem(id);return;}
-    const delay=Math.max(80,atual.st.nextAt-Date.now());
+  limparRolagem(id);
+  const info=prepararRolagemContinua(id,limiteVisivel);if(!info)return;
+  info.track.style.transition="none";
+  info.track.style.transform=info.st.pos?`translateY(-${yDaLinha(info,info.st.pos)}px)`:"translateY(0)";
+  const ciclo=()=>{
     scrollTimers[id]=setTimeout(()=>{
-      const vivo=aplicarPosicaoRolagem(id,limiteVisivel);if(!vivo){limparRolagem(id);return;}
-      const state=vivo.st;state.pos=state.pos>=vivo.maxPos?0:state.pos+1;state.nextAt=Date.now()+SCROLL_INTERVAL_MS;
-      const alvo=vivo.cards[Math.min(state.pos*vivo.cfg.colunas,vivo.cards.length-1)];
-      const y=alvo?alvo.offsetTop:0;
-      vivo.track.style.transition="transform 1.25s cubic-bezier(.22,.61,.36,1)";
-      vivo.track.style.transform=y?`translateY(-${y}px)`:"translateY(0)";
-      agendar();
-    },delay);
-  };agendar();
+      const vivo=prepararRolagemContinua(id,limiteVisivel);if(!vivo){limparRolagem(id);return;}
+      const proxima=vivo.st.pos+1;
+      vivo.track.style.transition=`transform ${SCROLL_MOVE_MS}ms cubic-bezier(.22,.61,.36,1)`;
+      vivo.track.style.transform=`translateY(-${yDaLinha(vivo,proxima)}px)`;
+      vivo.st.pos=proxima;
+      /* Ao alcançar a cópia da primeira linha, reposiciona invisivelmente no original após a animação. */
+      if(vivo.st.pos>=vivo.totalLinhas){
+        setTimeout(()=>{
+          const atual=$(id)?.querySelector(".scroll-track");
+          if(!atual)return;
+          vivo.st.pos=0;
+          atual.style.transition="none";
+          atual.style.transform="translateY(0)";
+        },SCROLL_MOVE_MS+40);
+      }
+      ciclo();
+    },SCROLL_PAUSE_MS);
+  };
+  ciclo();
 }
 function calibrarMomentosPorL1(){
   if(!matchMedia("(min-width:1001px)").matches)return;
