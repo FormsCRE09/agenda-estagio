@@ -207,6 +207,30 @@ body{overflow:hidden}
 }
 @media(max-width:1000px){.list.ready-scroll{height:auto;max-height:310px;overflow:hidden}}
 
+
+/* V14.6 — composição por momentos: duas linhas visíveis em todas as etapas.
+   Full HD é a referência; 2K/4K preservam as mesmas proporções funcionais. */
+@media (min-width:1001px){
+  .layout{grid-template-columns:1fr 1fr;gap:12px;align-content:start}
+  .moment-section{min-width:0}
+  .list.two-visible,
+  .list.upcoming-scroll,
+  .list.ready-scroll,
+  .list.pending-scroll{height:168px!important;max-height:168px!important;overflow:hidden}
+  .auto-list .empty{height:100%;box-sizing:border-box;display:grid;place-items:center;padding:16px}
+  #upcomingList .scroll-track{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:12px;row-gap:7px}
+  #upcomingList .item{margin:0}
+}
+@media (min-width:2200px){
+  .list.two-visible,
+  .list.upcoming-scroll,
+  .list.ready-scroll,
+  .list.pending-scroll{height:174px!important;max-height:174px!important}
+}
+@media (max-width:1000px){
+  .moment-section{grid-column:auto}
+}
+
 </style>
 </head>
 <body>
@@ -238,9 +262,9 @@ body{overflow:hidden}
     
     <section class="section"><div class="section-head"><h3>Aguardando atendimento</h3><span class="count" id="countWaiting">0</span></div><div class="list auto-list two-visible" id="waitingList"></div></section>
     <section class="section"><div class="section-head"><h3>Em atendimento</h3><span class="count" id="countProgress">0</span></div><div class="list auto-list two-visible" id="progressList"></div></section>
-    <section class="section full"><div class="section-head"><h3>Próximos atendimentos</h3><span class="count" id="countUpcoming">0</span></div><div class="list auto-list upcoming-scroll" id="upcomingList"></div></section>
-    <section class="section full" id="readySection"><div class="section-head"><h3>Presença registrada — aguardando liberação para atendimento</h3><span class="count" id="countReady">0</span></div><div class="list auto-list ready-scroll" id="readyList"></div></section>
-    <section class="section full" id="pendingSection"><div class="section-head"><h3>Horários encerrados — em verificação pela equipe</h3><span class="count" id="countPending">0</span></div><div class="list auto-list pending-scroll" id="pendingList"></div></section>
+    <section class="section full moment-section"><div class="section-head"><h3>Próximos atendimentos</h3><span class="count" id="countUpcoming">0</span></div><div class="list auto-list upcoming-scroll two-moment-rows" id="upcomingList"></div></section>
+    <section class="section moment-section" id="readySection"><div class="section-head"><h3>Presença registrada/liberada</h3><span class="count" id="countReady">0</span></div><div class="list auto-list ready-scroll two-moment-rows" id="readyList"></div></section>
+    <section class="section moment-section" id="pendingSection"><div class="section-head"><h3>Horários encerrados — em verificação pela equipe</h3><span class="count" id="countPending">0</span></div><div class="list auto-list pending-scroll two-moment-rows" id="pendingList"></div></section>
   </div>
   <div class="foot"><span class="privacy">Por privacidade, são exibidos somente o primeiro nome e a inicial do último sobrenome. CPF, telefone e e-mail não são exibidos neste painel.</span><span id="lastUpdate">Última atualização: --</span></div>
 </main>
@@ -363,8 +387,9 @@ function render(data){
   const changedUpcoming=renderList("upcomingList",upcoming,"Não há outros atendimentos programados para hoje.",true);
   const changedReady=renderList("readyList",ready,"Nenhuma presença registrada aguardando atendimento.");
   const changedPending=renderList("pendingList",pending,"Nenhum horário aguardando definição da equipe.");
-  $("readySection").style.display=ready.length?"block":"none";
-  $("pendingSection").style.display=pending.length?"block":"none";
+  /* V14.6 — os cinco momentos permanecem visíveis mesmo vazios para manter a grade estável na TV. */
+  $("readySection").style.display="block";
+  $("pendingSection").style.display="block";
   setCount("countWaiting",waiting.length);setCount("countProgress",progress.length);setCount("countUpcoming",upcoming.length);setCount("countReady",ready.length);setCount("countPending",pending.length);
   const r=data.resumo||{};setCount("kWaiting",r.aguardando||waiting.length);setCount("kCalled",r.chamados||called.length);setCount("kProgress",r.emAtendimento||progress.length);setCount("kReady",(r.presencaLiberada||0)+(r.atrasados||0));setCount("kDone",r.concluidos||0);
   $("lastUpdate").textContent="Última atualização: "+(data.atualizadoHora||"--");
@@ -375,7 +400,7 @@ function render(data){
   if(changedProgress) iniciarRolagemLista("progressList",2);
   if(changedUpcoming) iniciarRolagemLista("upcomingList",2);
   if(changedReady) iniciarRolagemLista("readyList",2);
-  if(changedPending) iniciarRolagemLista("pendingList",1);
+  if(changedPending) iniciarRolagemLista("pendingList",2);
 }
 
 async function refresh(){
@@ -453,7 +478,7 @@ function scheduleAutoScroll(){
   iniciarRolagemLista("progressList",2);
   iniciarRolagemLista("upcomingList",2);
   iniciarRolagemLista("readyList",2);
-  iniciarRolagemLista("pendingList",1);
+  iniciarRolagemLista("pendingList",2);
 }
 window.addEventListener("resize",scheduleAutoScroll);
 /* Inicia o ciclo de dados somente após toda a mecânica de rolagem estar inicializada. */
