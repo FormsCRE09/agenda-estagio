@@ -359,6 +359,35 @@ body{overflow:hidden}
   }
 }
 
+
+/* V14.6 — grade geométrica final / área útil Full HD — 30/09/2026
+   Uma única régua (L1) controla os cinco momentos. O painel é mantido dentro
+   da área útil vertical da tela, com pares simétricos e sem linhas parciais. */
+@media (min-width:1001px){
+  .wrap{
+    height:calc(100vh - 126px)!important;
+    max-height:calc(100vh - 126px)!important;
+    margin-top:10px!important;
+    padding-bottom:10px!important;
+    box-sizing:border-box!important;
+  }
+  .layout{
+    row-gap:10px!important;
+    column-gap:12px!important;
+    align-content:start!important;
+  }
+  #waitingList,#progressList{
+    height:var(--moment-viewport-double)!important;
+    max-height:var(--moment-viewport-double)!important;
+  }
+  #readyList,#pendingList,#upcomingList{
+    height:var(--moment-viewport)!important;
+    max-height:var(--moment-viewport)!important;
+  }
+  #waitingList .scroll-track,#progressList .scroll-track{gap:6px!important}
+  .auto-list{overflow:hidden!important}
+}
+
 </style>
 </head>
 <body>
@@ -686,16 +715,16 @@ function calibrarMomentosPorL1(){
   const padBottom=parseFloat(estilos.paddingBottom)||0;
   /* Nesta etapa exibimos uma única linha por momento.
      Em Próximos, essa linha possui duas colunas, portanto dois atendimentos simultâneos. */
-  /* Full HD real: Próximos precisa terminar antes de insinuar a linha seguinte.
-     Os mesmos 6 px retirados daqui são transferidos ao par superior. */
-  const AJUSTE_VERTICAL_FULLHD=6;
-  const viewport=Math.ceil(l1+padTop+padBottom-AJUSTE_VERTICAL_FULLHD);
+  /* Full HD real: L1 governa toda a grade. A janela de uma linha termina
+     antes do início visual da linha seguinte, sem deixar uma borda residual. */
+  const CORTE_SEGURANCA_L1=7;
+  const viewport=Math.ceil(l1+padTop+padBottom-CORTE_SEGURANCA_L1);
   document.documentElement.style.setProperty("--moment-l1",`${Math.ceil(l1)}px`);
   document.documentElement.style.setProperty("--moment-viewport",`${viewport}px`);
-  /* Aguardando e Em atendimento permanecem simétricos, com 2 × L1,
-     recebendo exatamente o espaço retirado de Próximos. */
-  const AJUSTE_MARGEM_TV_FULLHD=8;
-  const viewportDuplo=Math.ceil((2*l1)+padTop+padBottom+AJUSTE_VERTICAL_FULLHD+AJUSTE_MARGEM_TV_FULLHD);
+  /* Aguardando e Em atendimento usam rigorosamente duas linhas.
+     Não acrescentamos margem artificial: isso era o que permitia aparecer
+     uma faixa da terceira linha na TV. */
+  const viewportDuplo=Math.ceil((2*l1)+padTop+padBottom-CORTE_SEGURANCA_L1);
   document.documentElement.style.setProperty("--moment-viewport-double",`${viewportDuplo}px`);
 }
 
