@@ -670,38 +670,46 @@ function yDaLinha(info,linha){
 }
 function iniciarRolagemLista(id,limiteVisivel){
   limparRolagem(id);
+  /* Prepara UMA vez a esteira desta versão do conteúdo. O ciclo passa a trabalhar
+     sobre a mesma pista + clones até que os dados realmente mudem. Isso evita que
+     listas de uma única linha visível (Presença/Encerrados/Próximos) reconstruam
+     os clones entre movimentos e produzam qualquer salto ou retorno estranho. */
   const info=prepararRolagemContinua(id,limiteVisivel);if(!info)return;
+  const trackInicial=info.track;
   info.track.style.transition="none";
   info.track.style.transform=info.st.pos?`translateY(-${yDaLinha(info,info.st.pos)}px)`:"translateY(0)";
 
+  const aindaValida=()=>$(id)?.querySelector(".scroll-track")===trackInicial && trackInicial.isConnected;
   const agendarPausa=()=>{
     limparRolagem(id);
+    if(!aindaValida())return;
     scrollTimers[id]=setTimeout(mover,SCROLL_PAUSE_MS);
   };
   const mover=()=>{
-    const vivo=prepararRolagemContinua(id,limiteVisivel);if(!vivo){limparRolagem(id);return;}
-    const proxima=vivo.st.pos+1;
-    const destino=yDaLinha(vivo,proxima);
-    /* Movimento deliberadamente contínuo: aceleração/desaceleração muito discretas,
-       sem efeito de 'degrau'. A parada ocorre sempre no início exato de um L1. */
-    vivo.track.style.transition=`transform ${SCROLL_MOVE_MS}ms cubic-bezier(.45,.05,.55,.95)`;
-    requestAnimationFrame(()=>{vivo.track.style.transform=`translateY(-${destino}px)`;});
-    vivo.st.pos=proxima;
+    if(!aindaValida()){limparRolagem(id);return;}
+    const proxima=info.st.pos+1;
+    const destino=yDaLinha(info,proxima);
+    /* Mesmo carrossel eterno em TODOS os momentos: pausa, movimento fluido,
+       encaixe exato em L1 e continuidade pelo clone da primeira janela. */
+    info.track.style.transition=`transform ${SCROLL_MOVE_MS}ms cubic-bezier(.45,.05,.55,.95)`;
+    requestAnimationFrame(()=>{
+      if(aindaValida())info.track.style.transform=`translateY(-${destino}px)`;
+    });
+    info.st.pos=proxima;
 
     scrollTimers[id]=setTimeout(()=>{
-      if(vivo.st.pos>=vivo.totalLinhas){
-        const atual=$(id)?.querySelector(".scroll-track");
-        if(!atual)return;
-        vivo.st.pos=0;
-        atual.style.transition="none";
-        atual.style.transform="translateY(0)";
-        /* força a consolidação do reposicionamento invisível antes da pausa */
-        void atual.offsetHeight;
+      if(!aindaValida())return;
+      if(info.st.pos>=info.totalLinhas){
+        info.st.pos=0;
+        info.track.style.transition="none";
+        info.track.style.transform="translateY(0)";
+        /* O clone exibido é visualmente idêntico ao primeiro item real; por isso
+           este retorno acontece fora da percepção, formando a 'lista eterna'. */
+        void info.track.offsetHeight;
       }
       agendarPausa();
     },SCROLL_MOVE_MS+30);
   };
-  /* A primeira tela também recebe o mesmo tempo integral de leitura. */
   agendarPausa();
 }
 function calibrarMomentosPorL1(){
