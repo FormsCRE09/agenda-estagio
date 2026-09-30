@@ -177,6 +177,36 @@ body{overflow:hidden}
 @media(max-width:650px){.kpis-compact{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:9px!important}.kpis-compact .kpi{width:100%!important}.call-popup{padding:22px 18px;border-radius:18px}.call-signal{width:50px;height:50px;font-size:24px}}
 @media(prefers-reduced-motion:reduce){.call-signal{animation:none}.call-overlay,.call-popup,.auto-list .scroll-track{transition:none!important}}
 
+
+/* V14.6 — calibração final do Painel TV para Full HD (1920×1080)
+   Alturas orientadas por conteúdo: 2 registros em Aguardando/Em atendimento. */
+@media (min-width:1001px){
+  .wrap{width:min(1680px,calc(100% - 38px));margin-top:14px;height:calc(100vh - 122px)}
+  .kpis-compact{gap:12px!important;margin-bottom:12px!important}
+  .kpis-compact .kpi{border-radius:14px!important;padding:8px 10px!important;box-shadow:0 4px 14px rgba(30,62,92,.06)!important}
+  .layout{gap:12px;grid-auto-rows:auto;align-content:start}
+  .section{border-radius:14px}
+  .section-head{padding:10px 14px}
+  .list{padding:7px}
+  .item{margin:5px 0;padding:9px 12px 9px 15px;border-radius:11px}
+  .meta{margin-top:5px}.service{margin-top:4px}
+  .list.two-visible{height:150px}
+  .list.upcoming-scroll{height:248px}
+  .list.ready-scroll{height:150px}
+  .list.pending-scroll{height:104px}
+  #upcomingList .scroll-track{row-gap:7px!important}
+  .foot{margin-top:8px}
+}
+@media (min-width:2200px){
+  /* Em 2K/4K o painel não estica os blocos vazios; preserva a composição Full HD. */
+  .wrap{width:min(1800px,calc(100% - 56px));height:calc(100vh - 132px)}
+  .list.two-visible{height:156px}
+  .list.upcoming-scroll{height:260px}
+  .list.ready-scroll{height:156px}
+  .list.pending-scroll{height:108px}
+}
+@media(max-width:1000px){.list.ready-scroll{height:auto;max-height:310px;overflow:hidden}}
+
 </style>
 </head>
 <body>
@@ -209,6 +239,7 @@ body{overflow:hidden}
     <section class="section"><div class="section-head"><h3>Aguardando atendimento</h3><span class="count" id="countWaiting">0</span></div><div class="list auto-list two-visible" id="waitingList"></div></section>
     <section class="section"><div class="section-head"><h3>Em atendimento</h3><span class="count" id="countProgress">0</span></div><div class="list auto-list two-visible" id="progressList"></div></section>
     <section class="section full"><div class="section-head"><h3>Próximos atendimentos</h3><span class="count" id="countUpcoming">0</span></div><div class="list auto-list upcoming-scroll" id="upcomingList"></div></section>
+    <section class="section full" id="readySection"><div class="section-head"><h3>Presença registrada — aguardando liberação para atendimento</h3><span class="count" id="countReady">0</span></div><div class="list auto-list ready-scroll" id="readyList"></div></section>
     <section class="section full" id="pendingSection"><div class="section-head"><h3>Horários encerrados — em verificação pela equipe</h3><span class="count" id="countPending">0</span></div><div class="list auto-list pending-scroll" id="pendingList"></div></section>
   </div>
   <div class="foot"><span class="privacy">Por privacidade, são exibidos somente o primeiro nome e a inicial do último sobrenome. CPF, telefone e e-mail não são exibidos neste painel.</span><span id="lastUpdate">Última atualização: --</span></div>
@@ -323,15 +354,18 @@ function render(data){
   detectarNovasChamadas(called);
   const waiting=items.filter(i=>i.categoria==="AGUARDANDO");
   const progress=items.filter(i=>i.categoria==="EM_ATENDIMENTO");
-  const upcoming=items.filter(i=>["PROGRAMADO","PRESENCA_LIBERADA","ATRASADO"].includes(i.categoria));
+  const upcoming=items.filter(i=>i.categoria==="PROGRAMADO");
+  const ready=items.filter(i=>["PRESENCA_LIBERADA","ATRASADO"].includes(i.categoria));
   const pending=items.filter(i=>i.categoria==="PENDENTE");
   /* Seção visual "Chamados agora" removida; categoria e KPI CHAMADO permanecem ativos. */
   const changedWaiting=renderList("waitingList",waiting,"Ninguém aguardando no momento.");
   const changedProgress=renderList("progressList",progress,"Nenhum atendimento em andamento.");
   const changedUpcoming=renderList("upcomingList",upcoming,"Não há outros atendimentos programados para hoje.",true);
+  const changedReady=renderList("readyList",ready,"Nenhuma presença registrada aguardando atendimento.");
   const changedPending=renderList("pendingList",pending,"Nenhum horário aguardando definição da equipe.");
+  $("readySection").style.display=ready.length?"block":"none";
   $("pendingSection").style.display=pending.length?"block":"none";
-  setCount("countWaiting",waiting.length);setCount("countProgress",progress.length);setCount("countUpcoming",upcoming.length);setCount("countPending",pending.length);
+  setCount("countWaiting",waiting.length);setCount("countProgress",progress.length);setCount("countUpcoming",upcoming.length);setCount("countReady",ready.length);setCount("countPending",pending.length);
   const r=data.resumo||{};setCount("kWaiting",r.aguardando||waiting.length);setCount("kCalled",r.chamados||called.length);setCount("kProgress",r.emAtendimento||progress.length);setCount("kReady",(r.presencaLiberada||0)+(r.atrasados||0));setCount("kDone",r.concluidos||0);
   $("lastUpdate").textContent="Última atualização: "+(data.atualizadoHora||"--");
   $("connection").classList.remove("bad");$("connectionText").textContent="Atualização automática a cada 5 segundos";
@@ -340,6 +374,7 @@ function render(data){
   if(changedWaiting) iniciarRolagemLista("waitingList",2);
   if(changedProgress) iniciarRolagemLista("progressList",2);
   if(changedUpcoming) iniciarRolagemLista("upcomingList",2);
+  if(changedReady) iniciarRolagemLista("readyList",2);
   if(changedPending) iniciarRolagemLista("pendingList",1);
 }
 
@@ -353,7 +388,7 @@ async function refresh(){
     $("connection").classList.add("bad");$("connectionText").textContent="Atualização temporariamente indisponível — tentando reconectar";
     /* Diagnóstico preservado sem tarja pública: detalhes ficam no console do navegador. */
     $("alert").textContent="Os últimos dados permanecem na tela enquanto tentamos restabelecer a atualização.";$("alert").classList.remove("show");
-    if(!lastGoodData){["waitingList","progressList","upcomingList"].forEach(id=>renderList(id,[],"Aguardando conexão com o sistema..."));}
+    if(!lastGoodData){["waitingList","progressList","upcomingList","readyList"].forEach(id=>renderList(id,[],"Aguardando conexão com o sistema..."));}
   }
 }
 /* V13.20 — ciclo controlado: nunca inicia nova atualização enquanto a anterior está em andamento. */
@@ -417,6 +452,7 @@ function scheduleAutoScroll(){
   iniciarRolagemLista("waitingList",2);
   iniciarRolagemLista("progressList",2);
   iniciarRolagemLista("upcomingList",2);
+  iniciarRolagemLista("readyList",2);
   iniciarRolagemLista("pendingList",1);
 }
 window.addEventListener("resize",scheduleAutoScroll);
