@@ -159,7 +159,7 @@ body{overflow:hidden}
 .layout{gap:16px}
 .section{border-radius:16px}
 .auto-list .scroll-track{transition:transform 1.25s cubic-bezier(.22,.61,.36,1)}
-.call-overlay{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(7,17,29,.20);opacity:0;visibility:hidden;pointer-events:none;transition:opacity .28s ease,visibility .28s ease}
+.call-overlay{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(7,17,29,.20);opacity:0;visibility:hidden;pointer-events:none;transition:opacity 1s ease,visibility 1s ease}
 .call-overlay.show{opacity:1;visibility:visible}
 .call-popup{width:min(650px,92vw);background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 20px 55px rgba(0,34,68,.28);text-align:center;transform:translateY(16px) scale(.97);transition:transform .34s cubic-bezier(.22,.8,.28,1)}
 .call-overlay.show .call-popup{transform:translateY(0) scale(1)}
@@ -517,7 +517,7 @@ function mostrarProximaChamada(){
   $("callDestination").innerHTML=`<span class="label">Compareça ao atendimento de</span><span class="attendant">${esc(atendente)}</span>`;
   $("callService").textContent=i.servico||"";
   $("callOverlay").classList.add("show");tentarSomChamada();
-  setTimeout(()=>{$("callOverlay").classList.remove("show");setTimeout(()=>{callShowing=false;mostrarProximaChamada();},380);},7000);
+  setTimeout(()=>{$("callOverlay").classList.remove("show");setTimeout(()=>{callShowing=false;mostrarProximaChamada();},1000);},12000);
 }
 function detectarNovasChamadas(called){
   if(!calledInitialized){called.forEach(i=>{calledSeen.add(callKey(i));callQueue.push(i);});calledInitialized=true;mostrarProximaChamada();return;}
