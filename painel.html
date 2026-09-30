@@ -624,9 +624,10 @@ async function refreshLoop(){
 
 const scrollTimers={};
 const scrollStates={};
-/* Pausa de leitura + movimento suave, no mesmo princípio visual do rotator da barra superior. */
-const SCROLL_PAUSE_MS=4500;
-const SCROLL_MOVE_MS=1500;
+/* V14.6 — rolagem TV em esteira: pausa real para leitura e, depois,
+   deslocamento contínuo até o próximo encaixe exato da grade L1. */
+const SCROLL_PAUSE_MS=3600;
+const SCROLL_MOVE_MS=1250;
 function limparRolagem(id){
   if(scrollTimers[id]) clearTimeout(scrollTimers[id]);
   delete scrollTimers[id];
@@ -641,7 +642,6 @@ function configuracaoRolagem(id,limiteVisivel){
 function prepararRolagemContinua(id,limiteVisivel){
   const box=$(id);if(!box)return null;
   const track=box.querySelector(".scroll-track");if(!track)return null;
-  /* Clones existem apenas para completar a passagem final sem voltar bruscamente para o topo. */
   track.querySelectorAll(".scroll-clone").forEach(n=>n.remove());
   const cards=Array.from(track.querySelectorAll(".item:not(.scroll-clone)"));
   const cfg=configuracaoRolagem(id,limiteVisivel);
@@ -651,7 +651,8 @@ function prepararRolagemContinua(id,limiteVisivel){
     scrollStates[id]={pos:0,count:cards.length,colunas:cfg.colunas,totalLinhas};
     return null;
   }
-  /* Duplica somente as duas primeiras linhas. Assim o fim segue naturalmente para o início. */
+  /* Clona exatamente a janela visível: a última passagem continua naturalmente
+     para o início, sem salto perceptível dentro da área de leitura. */
   const qtdClones=Math.min(cards.length,cfg.linhasVisiveis*cfg.colunas);
   for(let i=0;i<qtdClones;i++){
     const clone=cards[i].cloneNode(true);clone.classList.add("scroll-clone");clone.setAttribute("aria-hidden","true");track.appendChild(clone);
@@ -672,27 +673,36 @@ function iniciarRolagemLista(id,limiteVisivel){
   const info=prepararRolagemContinua(id,limiteVisivel);if(!info)return;
   info.track.style.transition="none";
   info.track.style.transform=info.st.pos?`translateY(-${yDaLinha(info,info.st.pos)}px)`:"translateY(0)";
-  const ciclo=()=>{
-    scrollTimers[id]=setTimeout(()=>{
-      const vivo=prepararRolagemContinua(id,limiteVisivel);if(!vivo){limparRolagem(id);return;}
-      const proxima=vivo.st.pos+1;
-      vivo.track.style.transition=`transform ${SCROLL_MOVE_MS}ms cubic-bezier(.22,.61,.36,1)`;
-      vivo.track.style.transform=`translateY(-${yDaLinha(vivo,proxima)}px)`;
-      vivo.st.pos=proxima;
-      /* Ao alcançar a cópia da primeira linha, reposiciona invisivelmente no original após a animação. */
-      if(vivo.st.pos>=vivo.totalLinhas){
-        setTimeout(()=>{
-          const atual=$(id)?.querySelector(".scroll-track");
-          if(!atual)return;
-          vivo.st.pos=0;
-          atual.style.transition="none";
-          atual.style.transform="translateY(0)";
-        },SCROLL_MOVE_MS+40);
-      }
-      ciclo();
-    },SCROLL_PAUSE_MS);
+
+  const agendarPausa=()=>{
+    limparRolagem(id);
+    scrollTimers[id]=setTimeout(mover,SCROLL_PAUSE_MS);
   };
-  ciclo();
+  const mover=()=>{
+    const vivo=prepararRolagemContinua(id,limiteVisivel);if(!vivo){limparRolagem(id);return;}
+    const proxima=vivo.st.pos+1;
+    const destino=yDaLinha(vivo,proxima);
+    /* Movimento deliberadamente contínuo: aceleração/desaceleração muito discretas,
+       sem efeito de 'degrau'. A parada ocorre sempre no início exato de um L1. */
+    vivo.track.style.transition=`transform ${SCROLL_MOVE_MS}ms cubic-bezier(.45,.05,.55,.95)`;
+    requestAnimationFrame(()=>{vivo.track.style.transform=`translateY(-${destino}px)`;});
+    vivo.st.pos=proxima;
+
+    scrollTimers[id]=setTimeout(()=>{
+      if(vivo.st.pos>=vivo.totalLinhas){
+        const atual=$(id)?.querySelector(".scroll-track");
+        if(!atual)return;
+        vivo.st.pos=0;
+        atual.style.transition="none";
+        atual.style.transform="translateY(0)";
+        /* força a consolidação do reposicionamento invisível antes da pausa */
+        void atual.offsetHeight;
+      }
+      agendarPausa();
+    },SCROLL_MOVE_MS+30);
+  };
+  /* A primeira tela também recebe o mesmo tempo integral de leitura. */
+  agendarPausa();
 }
 function calibrarMomentosPorL1(){
   if(!matchMedia("(min-width:1001px)").matches)return;
