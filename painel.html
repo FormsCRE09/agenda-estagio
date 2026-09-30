@@ -265,10 +265,9 @@ body{overflow:hidden}
   .upcoming-final{grid-column:1 / -1;}
 }
 
-/* V14.6 — 30/09/2026 — L1 único em todos os momentos.
+/* V14.6 — 30/09/2026 — L1 único como unidade de card.
    Full HD (1920×1080) permanece como referência.
-   Cada momento exibe 1 × L1. Próximos é a única lista com duas colunas,
-   portanto mostra dois atendimentos simultaneamente. */
+   A quantidade de L1 visíveis varia por faixa conforme a composição aprovada. */
 @media (min-width:1001px){
   .list.two-visible,.list.upcoming-scroll,.list.ready-scroll,.list.pending-scroll{
     height:var(--moment-viewport)!important;max-height:var(--moment-viewport)!important;
@@ -280,6 +279,53 @@ body{overflow:hidden}
 .status-stack .call-note{margin:0!important;padding:0!important;border:0!important;max-width:230px;font-size:clamp(.60rem,.68vw,.72rem)!important;line-height:1.08;font-weight:800;text-align:right;color:#526779}
 .ready .status-stack .call-note{color:#7e6320}.late .status-stack .call-note{color:#85571b}.pending .status-stack .call-note{color:#675a49}
 @media(max-width:650px){.status-stack{max-width:48%}.status-stack .call-note{font-size:.58rem!important;max-width:150px}}
+
+
+/* V14.6 — ajuste de simetria dos pares / Full HD — 30/09/2026
+   Aguardando + Em atendimento = 2 × L1.
+   Presença/liberada + Encerrados = 1 × L1.
+   Próximos = 1 × L1, duas colunas.
+   O aviso abaixo do status não participa do fluxo vertical do card. */
+:root{--moment-viewport-double:246px}
+@media (min-width:1001px){
+  #waitingList,
+  #progressList{
+    height:var(--moment-viewport-double)!important;
+    max-height:var(--moment-viewport-double)!important;
+  }
+  #readyList,
+  #pendingList,
+  #upcomingList{
+    height:var(--moment-viewport)!important;
+    max-height:var(--moment-viewport)!important;
+  }
+}
+.item{position:relative}
+.item .row1{
+  display:block!important;
+  padding-right:min(44%,260px);
+}
+.item .status-stack{
+  position:absolute!important;
+  top:8px;
+  right:13px;
+  z-index:2;
+  display:flex;
+  flex-direction:column;
+  align-items:flex-end;
+  gap:3px;
+  max-width:44%;
+}
+.item .status-stack .call-note{
+  margin:0!important;
+  padding:0!important;
+  border:0!important;
+  line-height:1.08!important;
+}
+@media(max-width:650px){
+  .item .row1{padding-right:48%}
+  .item .status-stack{top:8px;right:10px;max-width:48%}
+}
 
 </style>
 </head>
@@ -447,8 +493,8 @@ function render(data){
   $("alert").classList.remove("show");
   calibrarMomentosPorL1();
   /* Reinicia somente a rolagem da lista cujo conteúdo realmente mudou. */
-  if(changedWaiting) iniciarRolagemLista("waitingList",1);
-  if(changedProgress) iniciarRolagemLista("progressList",1);
+  if(changedWaiting) iniciarRolagemLista("waitingList",2);
+  if(changedProgress) iniciarRolagemLista("progressList",2);
   if(changedUpcoming) iniciarRolagemLista("upcomingList",1);
   if(changedReady) iniciarRolagemLista("readyList",1);
   if(changedPending) iniciarRolagemLista("pendingList",1);
@@ -571,11 +617,14 @@ function calibrarMomentosPorL1(){
   const viewport=Math.ceil(l1+padTop+padBottom);
   document.documentElement.style.setProperty("--moment-l1",`${Math.ceil(l1)}px`);
   document.documentElement.style.setProperty("--moment-viewport",`${viewport}px`);
+  /* Aguardando e Em atendimento são um par visual: dois cards L1 simultâneos. */
+  const viewportDuplo=Math.ceil((2*l1)+padTop+padBottom);
+  document.documentElement.style.setProperty("--moment-viewport-double",`${viewportDuplo}px`);
 }
 
 function scheduleAutoScroll(){
-  iniciarRolagemLista("waitingList",1);
-  iniciarRolagemLista("progressList",1);
+  iniciarRolagemLista("waitingList",2);
+  iniciarRolagemLista("progressList",2);
   iniciarRolagemLista("upcomingList",1);
   iniciarRolagemLista("readyList",1);
   iniciarRolagemLista("pendingList",1);
