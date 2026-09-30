@@ -343,6 +343,22 @@ body{overflow:hidden}
 .sound-icon{font-size:15px;line-height:1}
 @media(max-width:650px){.sound-enable{right:10px;bottom:10px;padding:6px 9px}.sound-text{font-size:9px}}
 
+
+/* V14.6 — harmonização Full HD das duas etapas superiores — 30/09/2026
+   Mantém L1 e os cards intactos; reduz somente o vazio ENTRE L1/L2.
+   Aguardando e Em atendimento permanecem rigorosamente simétricos. */
+@media (min-width:1001px){
+  #waitingList .scroll-track,
+  #progressList .scroll-track{
+    gap:6px!important;
+  }
+  #waitingList .item,
+  #progressList .item{
+    margin-top:0!important;
+    margin-bottom:0!important;
+  }
+}
+
 </style>
 </head>
 <body>
@@ -678,7 +694,8 @@ function calibrarMomentosPorL1(){
   document.documentElement.style.setProperty("--moment-viewport",`${viewport}px`);
   /* Aguardando e Em atendimento permanecem simétricos, com 2 × L1,
      recebendo exatamente o espaço retirado de Próximos. */
-  const viewportDuplo=Math.ceil((2*l1)+padTop+padBottom+AJUSTE_VERTICAL_FULLHD);
+  const AJUSTE_MARGEM_TV_FULLHD=8;
+  const viewportDuplo=Math.ceil((2*l1)+padTop+padBottom+AJUSTE_VERTICAL_FULLHD+AJUSTE_MARGEM_TV_FULLHD);
   document.documentElement.style.setProperty("--moment-viewport-double",`${viewportDuplo}px`);
 }
 
