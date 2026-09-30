@@ -231,6 +231,26 @@ body{overflow:hidden}
   .moment-section{grid-column:auto}
 }
 
+
+/* V14.6 — calibração L1 / Full HD como referência principal.
+   L1 = distância entre o início da 1ª e da 2ª linha de Próximos atendimentos.
+   Todas as listas de momentos usam exatamente 2 × L1 de área útil. */
+:root{--moment-l1:82px;--moment-viewport:164px}
+@media (min-width:1001px){
+  .wrap{height:calc(100vh - 122px);}
+  .layout{row-gap:clamp(12px,1.55vh,18px)!important;column-gap:12px!important;align-content:start!important}
+  .list.two-visible,
+  .list.upcoming-scroll,
+  .list.ready-scroll,
+  .list.pending-scroll{
+    height:var(--moment-viewport)!important;
+    max-height:var(--moment-viewport)!important;
+    box-sizing:border-box!important;
+    overflow:hidden!important;
+  }
+  .section-head{min-height:42px;box-sizing:border-box}
+  #upcomingList .scroll-track{row-gap:7px!important}
+}
 </style>
 </head>
 <body>
@@ -395,6 +415,7 @@ function render(data){
   $("lastUpdate").textContent="Última atualização: "+(data.atualizadoHora||"--");
   $("connection").classList.remove("bad");$("connectionText").textContent="Atualização automática a cada 5 segundos";
   $("alert").classList.remove("show");
+  calibrarMomentosPorL1();
   /* Reinicia somente a rolagem da lista cujo conteúdo realmente mudou. */
   if(changedWaiting) iniciarRolagemLista("waitingList",2);
   if(changedProgress) iniciarRolagemLista("progressList",2);
@@ -473,6 +494,30 @@ function iniciarRolagemLista(id,limiteVisivel){
     },delay);
   };agendar();
 }
+function calibrarMomentosPorL1(){
+  if(!matchMedia("(min-width:1001px)").matches)return;
+  const box=$("upcomingList");
+  const track=box?.querySelector(".scroll-track");
+  const cards=track?Array.from(track.querySelectorAll(".item")):[];
+  let l1=0;
+  /* Em paisagem Próximos é a única lista com duas colunas: 0/1 = linha 1; 2/3 = linha 2. */
+  if(cards.length>=3){
+    l1=cards[2].offsetTop-cards[0].offsetTop;
+  }else if(cards.length>=2 && !matchMedia("(orientation:landscape) and (min-width:800px)").matches){
+    l1=cards[1].offsetTop-cards[0].offsetTop;
+  }
+  /* Referência Full HD segura quando ainda não há duas linhas reais para medir. */
+  if(!Number.isFinite(l1)||l1<60||l1>150)l1=82;
+  const estilos=getComputedStyle(box);
+  const padTop=parseFloat(estilos.paddingTop)||0;
+  const padBottom=parseFloat(estilos.paddingBottom)||0;
+  /* 2 × L1 é a área entre o início da primeira linha e o início da terceira.
+     Somamos apenas os paddings da própria lista para que nenhuma linha seja cortada. */
+  const viewport=Math.ceil((2*l1)+padTop+padBottom);
+  document.documentElement.style.setProperty("--moment-l1",`${Math.ceil(l1)}px`);
+  document.documentElement.style.setProperty("--moment-viewport",`${viewport}px`);
+}
+
 function scheduleAutoScroll(){
   iniciarRolagemLista("waitingList",2);
   iniciarRolagemLista("progressList",2);
@@ -480,7 +525,7 @@ function scheduleAutoScroll(){
   iniciarRolagemLista("readyList",2);
   iniciarRolagemLista("pendingList",2);
 }
-window.addEventListener("resize",scheduleAutoScroll);
+window.addEventListener("resize",()=>{calibrarMomentosPorL1();scheduleAutoScroll();});
 /* Inicia o ciclo de dados somente após toda a mecânica de rolagem estar inicializada. */
 refreshLoop();
 </script>
